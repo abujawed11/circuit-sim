@@ -1,7 +1,16 @@
 import React, { useRef, useState } from "react";
 import { KIND, LV } from "../model/types";
 
-const PIN_RADIUS = 8;
+const PIN_RADIUS = 10;
+const WIRE_HIT_PX = 8;
+const GRID = 24;
+
+// -------- visuals ----------
+const wireColorForValue = (v) => {
+  if (v === LV.HIGH) return "#FAD90E";
+  if (v === LV.LOW) return "#9CA3AF";
+  return "#60A5FA";
+};
 
 const pinDot = (ctx, x, y, v) => {
   ctx.beginPath();
@@ -13,12 +22,38 @@ const pinDot = (ctx, x, y, v) => {
   ctx.stroke();
 };
 
-export default function Canvas({ circuit, onPlace, onToggleInput, onConnectPins }) {
+const snap = (n) => Math.round(n / GRID) * GRID;
+
+export default function Canvas({
+  circuit,
+  onPlace,
+  onToggleInput,
+  onConnectPins,
+  onMoveComponent,
+  onDeleteComponent,
+  onDuplicateComponent,
+  onDeleteWire,
+}) {
   const ref = useRef(null);
 
-  // NEW: wire draft state
-  const [draft, setDraft] = useState(null); // { fromPinId, fromX, fromY }
+  // Draft wire:
+  // fromPinId: starting output pin
+  // points: intermediate locked points (polyline vertices)
+  const [draft, setDraft] = useState(null); // { fromPinId, points: [{x,y}...] }
   const [mouse, setMouse] = useState({ x: 0, y: 0 });
+
+  const [selectedCompId, setSelectedCompId] = useState(null);
+  const [selectedWireId, setSelectedWireId] = useState(null);
+
+  const [drag, setDrag] = useState(null); // { compId, dx, dy }
+  const [menu, setMenu] = useState(null);
+  const closeMenu = () => setMenu(null);
+
+  const toLocal = (e) => {
+    const canvas = ref.current;
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
 
   const draw = () => {
     const canvas = ref.current;
@@ -39,13 +74,13 @@ export default function Canvas({ circuit, onPlace, onToggleInput, onConnectPins 
     // grid
     ctx.globalAlpha = 0.25;
     ctx.strokeStyle = "#2a2a2a";
-    for (let x = 0; x < rect.width; x += 24) {
+    for (let x = 0; x < rect.width; x += GRID) {
       ctx.beginPath();
       ctx.moveTo(x, 0);
       ctx.lineTo(x, rect.height);
       ctx.stroke();
     }
-    for (let y = 0; y < rect.height; y += 24) {
+    for (let y = 0; y < rect.height; y += GRID) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(rect.width, y);
@@ -53,47 +88,61 @@ export default function Canvas({ circuit, onPlace, onToggleInput, onConnectPins 
     }
     ctx.globalAlpha = 1;
 
-    // wires
-    ctx.strokeStyle = "#9CA3AF";
-    ctx.lineWidth = 3;
+    // ---- wires (polyline) ----
     for (const w of circuit.wires) {
       const from = findPinPos(circuit, w.fromPinId);
       const to = findPinPos(circuit, w.toPinId);
       if (!from || !to) continue;
-      ctx.beginPath();
-      ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
+
+      const isSel = w.id === selectedWireId;
+
+      const fromPin = findPin(circuit, w.fromPinId);
+      const v = fromPin?.pin?.value ?? LV.X;
+
+      ctx.strokeStyle = isSel ? "#FAD90E" : wireColorForValue(v);
+      ctx.lineWidth = isSel ? 4 : 3;
+
+      const pts = buildWirePolyline(from, to, w.points);
+      drawPolyline(ctx, pts);
     }
 
-    // NEW: preview wire while drafting
+    // ---- preview draft ----
     if (draft) {
-      ctx.strokeStyle = "#FAD90E";
-      ctx.lineWidth = 3;
-      ctx.setLineDash([6, 6]);
-      ctx.beginPath();
-      ctx.moveTo(draft.fromX, draft.fromY);
-      ctx.lineTo(mouse.x, mouse.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      const from = findPinPos(circuit, draft.fromPinId);
+      if (from) {
+        ctx.strokeStyle = "#FAD90E";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 6]);
+
+        const previewEnd = { x: snap(mouse.x), y: snap(mouse.y) };
+        const pts = buildDraftPolyline(from, draft.points, previewEnd);
+        drawPolyline(ctx, pts);
+
+        // draw the locked points as small squares
+        ctx.setLineDash([]);
+        for (const p of draft.points) {
+          ctx.fillStyle = "rgba(250,217,14,0.9)";
+          ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+        }
+      }
     }
 
-    // components
+    // ---- components ----
     for (const c of circuit.components) {
-      // body
+      const isSel = c.id === selectedCompId;
+
       ctx.fillStyle = "#121212";
-      ctx.strokeStyle = "#333";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+      ctx.lineWidth = isSel ? 3 : 2;
+
       roundRect(ctx, c.x, c.y, c.w, c.h, 12);
       ctx.fill();
       ctx.stroke();
 
-      // title
       ctx.fillStyle = "#e5e5e5";
       ctx.font = "14px system-ui";
       ctx.fillText(c.kind, c.x + 12, c.y + 22);
 
-      // input state indicator
       if (c.kind === KIND.INPUT) {
         ctx.fillStyle = c.state.value === LV.HIGH ? "#FAD90E" : "#666";
         ctx.beginPath();
@@ -101,7 +150,6 @@ export default function Canvas({ circuit, onPlace, onToggleInput, onConnectPins 
         ctx.fill();
       }
 
-      // LED glow
       if (c.kind === KIND.LED) {
         const inPin = c.pins.find((p) => p.name === "IN");
         const on = inPin?.value === LV.HIGH;
@@ -114,12 +162,19 @@ export default function Canvas({ circuit, onPlace, onToggleInput, onConnectPins 
         ctx.fillText(on ? "ON" : "OFF", c.x + 12, c.y + c.h - 12);
       }
 
-      // pins
       for (const p of c.pins) {
         const pos = pinPosition(c, p);
         pinDot(ctx, pos.x, pos.y, p.value);
       }
     }
+
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.font = "12px system-ui";
+    ctx.fillText(
+      "Draft wire: click empty to add point • Backspace removes last point • Click IN pin to finish",
+      14,
+      rect.height - 14
+    );
   };
 
   React.useEffect(() => {
@@ -129,66 +184,235 @@ export default function Canvas({ circuit, onPlace, onToggleInput, onConnectPins 
     return () => window.removeEventListener("resize", onResize);
   });
 
-  const toLocal = (e) => {
-    const canvas = ref.current;
-    const rect = canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-
   const onMouseMove = (e) => {
     const p = toLocal(e);
     setMouse(p);
+
+    if (drag) {
+      onMoveComponent(drag.compId, p.x - drag.dx, p.y - drag.dy);
+    }
   };
 
-  const onClick = (e) => {
+  const onMouseDown = (e) => {
+    closeMenu();
     const { x, y } = toLocal(e);
 
-    // 1) If clicked on a pin -> wiring logic
+    const hitPin = hitTestPin(circuit, x, y);
+    if (hitPin) return;
+
+    const hitW = hitTestWirePolyline(circuit, x, y);
+    if (hitW) {
+      setSelectedWireId(hitW.id);
+      setSelectedCompId(null);
+      return;
+    }
+
+    const hitComp = hitComponent(circuit, x, y);
+    if (hitComp) {
+      setSelectedCompId(hitComp.id);
+      setSelectedWireId(null);
+      setDrag({ compId: hitComp.id, dx: x - hitComp.x, dy: y - hitComp.y });
+      e.preventDefault();
+    } else {
+      setSelectedCompId(null);
+      setSelectedWireId(null);
+    }
+  };
+
+  const onMouseUp = () => setDrag(null);
+
+  const onClick = (e) => {
+    closeMenu();
+    const { x, y } = toLocal(e);
+    const sx = snap(x);
+    const sy = snap(y);
+
+    // 1) pin click (wiring start/finish)
     const hitPin = hitTestPin(circuit, x, y);
     if (hitPin) {
+      setSelectedCompId(hitPin.comp.id);
+      setSelectedWireId(null);
+
       if (!draft) {
-        // start wire only from OUT pins
+        // start only from OUT pin
         if (hitPin.pin.dir === "out") {
-          setDraft({ fromPinId: hitPin.pin.id, fromX: hitPin.x, fromY: hitPin.y });
+          setDraft({ fromPinId: hitPin.pin.id, points: [] });
         }
       } else {
-        // finish wire only to IN pins
+        // finish only on IN pin
         if (hitPin.pin.dir === "in") {
-          onConnectPins(draft.fromPinId, hitPin.pin.id);
+          onConnectPins(draft.fromPinId, hitPin.pin.id, draft.points);
           setDraft(null);
         }
       }
       return;
     }
 
-    // 2) If drafting and clicked empty -> cancel draft
+    // 2) if drafting, clicking empty adds a route point
     if (draft) {
-      setDraft(null);
+      setDraft((prev) => {
+        if (!prev) return prev;
+        const nextPoints = addOrthoPoint(circuit, prev.fromPinId, prev.points, {
+          x: sx,
+          y: sy,
+        });
+        return { ...prev, points: nextPoints };
+      });
       return;
     }
 
-    // 3) If click on INPUT body -> toggle
-    const hitComp = circuit.components.find(
-      (c) => x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h
-    );
+    // 3) toggle input
+    const hitComp = hitComponent(circuit, x, y);
     if (hitComp?.kind === KIND.INPUT) {
       onToggleInput(hitComp.id);
       return;
     }
 
-    // 4) Otherwise place component
-    onPlace(x - 60, y - 35);
+    // 4) wire select
+    const hitW = hitTestWirePolyline(circuit, x, y);
+    if (hitW) {
+      setSelectedWireId(hitW.id);
+      setSelectedCompId(null);
+      return;
+    }
+
+    // 5) place
+    if (!hitComp) onPlace(sx - 60, sy - 35);
   };
 
+  const onContextMenu = (e) => {
+    e.preventDefault();
+    const { x, y } = toLocal(e);
+
+    const hitPin = hitTestPin(circuit, x, y);
+    if (hitPin) return;
+
+    const hitW = hitTestWirePolyline(circuit, x, y);
+    if (hitW) {
+      setSelectedWireId(hitW.id);
+      setSelectedCompId(null);
+      setMenu({ x, y, type: "wire", id: hitW.id });
+      return;
+    }
+
+    const hitComp = hitComponent(circuit, x, y);
+    if (hitComp) {
+      setSelectedCompId(hitComp.id);
+      setSelectedWireId(null);
+      setMenu({ x, y, type: "comp", id: hitComp.id });
+      return;
+    }
+
+    setMenu({ x, y, type: "blank", id: null });
+  };
+
+  // keyboard: delete, cancel, undo point
+  React.useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setDraft(null);
+        setDrag(null);
+        closeMenu();
+        return;
+      }
+
+      // while drafting: Backspace removes last point
+      if (draft && (e.key === "Backspace" || e.key === "Delete")) {
+        e.preventDefault();
+        setDraft((prev) => {
+          if (!prev) return prev;
+          const pts = prev.points.slice(0, -1);
+          return { ...prev, points: pts };
+        });
+        return;
+      }
+
+      // not drafting: delete selection
+      if (!draft && (e.key === "Backspace" || e.key === "Delete")) {
+        if (selectedWireId) {
+          onDeleteWire(selectedWireId);
+          setSelectedWireId(null);
+          return;
+        }
+        if (selectedCompId) {
+          onDeleteComponent(selectedCompId);
+          setSelectedCompId(null);
+          return;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [draft, selectedCompId, selectedWireId, onDeleteComponent, onDeleteWire]);
+
   return (
-    <canvas
-      ref={ref}
-      className="w-full h-full cursor-crosshair"
-      onMouseMove={onMouseMove}
-      onClick={onClick}
-    />
+    <div className="w-full h-full relative">
+      <canvas
+        ref={ref}
+        className="w-full h-full cursor-crosshair"
+        onMouseMove={onMouseMove}
+        onMouseDown={onMouseDown}
+        onMouseUp={onMouseUp}
+        onClick={onClick}
+        onContextMenu={onContextMenu}
+      />
+
+      {menu && (
+        <div
+          className="absolute z-50 rounded-xl border border-neutral-700 bg-neutral-900 shadow-xl text-sm overflow-hidden"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {menu.type === "comp" && (
+            <div className="min-w-44">
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                onClick={() => {
+                  onDuplicateComponent(menu.id);
+                  closeMenu();
+                }}
+              >
+                Duplicate
+              </button>
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
+                onClick={() => {
+                  onDeleteComponent(menu.id);
+                  closeMenu();
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          )}
+
+          {menu.type === "wire" && (
+            <div className="min-w-44">
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
+                onClick={() => {
+                  onDeleteWire(menu.id);
+                  closeMenu();
+                }}
+              >
+                Delete wire
+              </button>
+            </div>
+          )}
+
+          {menu.type === "blank" && (
+            <div className="min-w-44">
+              <div className="px-3 py-2 text-neutral-400">No actions</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
+
+// ---------------- helper funcs ----------------
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -218,7 +442,14 @@ function findPinPos(circuit, pinId) {
   return null;
 }
 
-// NEW: hit test pins by distance
+function findPin(circuit, pinId) {
+  for (const c of circuit.components) {
+    const p = c.pins.find((pp) => pp.id === pinId);
+    if (p) return { comp: c, pin: p };
+  }
+  return null;
+}
+
 function hitTestPin(circuit, x, y) {
   for (const c of circuit.components) {
     for (const p of c.pins) {
@@ -231,4 +462,114 @@ function hitTestPin(circuit, x, y) {
     }
   }
   return null;
+}
+
+// function hitComponent(circuit, x, y) {
+//   for (let i = circuit.components.length - 1; i >= 0; i--) {
+//     const c = circuit.components[i];
+//     if (x (>=) c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) return c;
+//   }
+//   return null;
+// }
+
+// NOTE: Fix the typo above (PowerShell style) — keep correct JS condition:
+function hitComponent(circuit, x, y) {
+  for (let i = circuit.components.length - 1; i >= 0; i--) {
+    const c = circuit.components[i];
+    if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) return c;
+  }
+  return null;
+}
+
+function buildWirePolyline(from, to, points) {
+  const mid = Array.isArray(points) ? points : [];
+  // If old wires exist without points, this still works
+  return [from, ...mid, to];
+}
+
+// For draft we want ortho segments (Manhattan). We enforce it when adding points,
+// but also ensure the preview from last point to mouse is ortho.
+function buildDraftPolyline(from, points, end) {
+  const pts = [from, ...(points || [])];
+  const last = pts[pts.length - 1];
+  const orthoEndPts = orthoSegment(last, end);
+  return [...pts, ...orthoEndPts.slice(1)];
+}
+
+// Enforce orthogonal routing: if click point isn't aligned with last,
+// insert an intermediate point so segments stay horizontal/vertical.
+function addOrthoPoint(circuit, fromPinId, points, clicked) {
+  const from = findPinPos(circuit, fromPinId);
+  if (!from) return points;
+
+  const current = [from, ...(points || [])];
+  const last = current[current.length - 1];
+
+  const seg = orthoSegment(last, clicked); // [last, mid?, clicked]
+  // We only store intermediate points (excluding "last")
+  // seg includes last as [0], so take from index 1 onward.
+  const newPts = seg.slice(1);
+
+  // Prevent adding duplicate last point
+  const out = [...(points || [])];
+  for (const p of newPts) {
+    const prev = out[out.length - 1];
+    if (!prev || prev.x !== p.x || prev.y !== p.y) out.push(p);
+  }
+  return out;
+}
+
+// Returns a Manhattan segment path from a->b: [a, (b.x,a.y) , b] OR [a, b] if aligned
+function orthoSegment(a, b) {
+  if (a.x === b.x || a.y === b.y) return [a, b];
+  // horizontal then vertical (can swap later if you want)
+  return [a, { x: b.x, y: a.y }, b];
+}
+
+function drawPolyline(ctx, pts) {
+  if (!pts || pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+}
+
+// --- wire hit test for stored polylines ---
+function hitTestWirePolyline(circuit, x, y) {
+  for (let i = circuit.wires.length - 1; i >= 0; i--) {
+    const w = circuit.wires[i];
+    const from = findPinPos(circuit, w.fromPinId);
+    const to = findPinPos(circuit, w.toPinId);
+    if (!from || !to) continue;
+
+    const pts = buildWirePolyline(from, to, w.points);
+    const d = distPointToPolyline({ x, y }, pts);
+    if (d <= WIRE_HIT_PX) return w;
+  }
+  return null;
+}
+
+function distPointToPolyline(p, pts) {
+  let best = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    best = Math.min(best, distPointToSegment(p, pts[i], pts[i + 1]));
+  }
+  return best;
+}
+
+function distPointToSegment(p, a, b) {
+  const abx = b.x - a.x;
+  const aby = b.y - a.y;
+  const apx = p.x - a.x;
+  const apy = p.y - a.y;
+
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 === 0) return Math.hypot(apx, apy);
+
+  let t = (apx * abx + apy * aby) / ab2;
+  t = Math.max(0, Math.min(1, t));
+
+  const cx = a.x + t * abx;
+  const cy = a.y + t * aby;
+  return Math.hypot(p.x - cx, p.y - cy);
 }
