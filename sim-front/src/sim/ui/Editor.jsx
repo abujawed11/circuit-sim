@@ -298,13 +298,17 @@ export default function Editor() {
 
         // ✅ Decide correct direction OUT -> IN regardless of click order
         let fromPinId, toPinId;
+        let finalPoints = points;
 
         if (A.pin.dir === "out" && B.pin.dir === "in") {
             fromPinId = aPinId;
             toPinId = bPinId;
+            // Pins in correct order, points stay as-is
         } else if (A.pin.dir === "in" && B.pin.dir === "out") {
             fromPinId = bPinId;
             toPinId = aPinId;
+            // Pins swapped, reverse points to maintain path
+            finalPoints = [...points].reverse();
         } else {
             // IN->IN or OUT->OUT not allowed (prevents blue confusion)
             return;
@@ -321,7 +325,7 @@ export default function Editor() {
                 id: uid(),
                 fromPinId,
                 toPinId,
-                points,
+                points: finalPoints,
             });
         }
 
