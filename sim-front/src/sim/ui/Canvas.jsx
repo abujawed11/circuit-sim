@@ -33,6 +33,7 @@ export default function Canvas({
   onDeleteComponent,
   onDuplicateComponent,
   onDeleteWire,
+  onUpdateWire,
 }) {
   const ref = useRef(null);
 
@@ -46,14 +47,10 @@ export default function Canvas({
   const [selectedWireId, setSelectedWireId] = useState(null);
 
   const [drag, setDrag] = useState(null); // { compId, dx, dy }
+  const [wireDrag, setWireDrag] = useState(null); // { wireId, dx, dy }
+  const [pointDrag, setPointDrag] = useState(null); // { wireId, pointIndex, dx, dy }
   const [menu, setMenu] = useState(null);
   const closeMenu = () => setMenu(null);
-
-  const toLocal = (e) => {
-    const canvas = ref.current;
-    const rect = canvas.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
 
   const draw = () => {
     const canvas = ref.current;
@@ -104,6 +101,15 @@ export default function Canvas({
 
       const pts = buildWirePolyline(from, to, w.points);
       drawPolyline(ctx, pts);
+
+      if (isSel) {
+        for (const p of pts) {
+          ctx.fillStyle = "#FAD90E";
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
     }
 
     // ---- preview draft ----
@@ -184,18 +190,44 @@ export default function Canvas({
     return () => window.removeEventListener("resize", onResize);
   });
 
+  const toLocal = (e) => {
+    const canvas = ref.current;
+    const rect = canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
   const onMouseMove = (e) => {
     const p = toLocal(e);
     setMouse(p);
 
     if (drag) {
       onMoveComponent(drag.compId, p.x - drag.dx, p.y - drag.dy);
+    } else if (pointDrag) {
+      const { wireId, pointIndex, dx, dy } = pointDrag;
+      const wire = circuit.wires.find((w) => w.id === wireId);
+      if (wire) {
+        const newPoints = [...(wire.points || [])];
+        newPoints[pointIndex] = { x: snap(p.x - dx), y: snap(p.y - dy) };
+        onUpdateWire(wireId, newPoints);
+      }
     }
   };
 
   const onMouseDown = (e) => {
     closeMenu();
     const { x, y } = toLocal(e);
+
+    const hitPoint = hitTestWirePoint(circuit, x, y);
+    if (hitPoint) {
+      const { wireId, pointIndex } = hitPoint;
+      const wire = circuit.wires.find((w) => w.id === wireId);
+      if (wire) {
+        const pt = wire.points[pointIndex];
+        setPointDrag({ wireId, pointIndex, dx: x - pt.x, dy: y - pt.y });
+        e.preventDefault();
+        return;
+      }
+    }
 
     const hitPin = hitTestPin(circuit, x, y);
     if (hitPin) return;
@@ -204,6 +236,7 @@ export default function Canvas({
     if (hitW) {
       setSelectedWireId(hitW.id);
       setSelectedCompId(null);
+      e.preventDefault();
       return;
     }
 
@@ -219,7 +252,11 @@ export default function Canvas({
     }
   };
 
-  const onMouseUp = () => setDrag(null);
+  const onMouseUp = () => {
+    setDrag(null);
+    setWireDrag(null);
+    setPointDrag(null);
+  };
 
   const onClick = (e) => {
     closeMenu();
@@ -277,12 +314,18 @@ export default function Canvas({
     }
 
     // 5) place
-    if (!hitComp) onPlace(sx - 60, sy - 35);
+    // if (!hitComp) onPlace(sx - 60, sy - 35);
   };
 
   const onContextMenu = (e) => {
     e.preventDefault();
     const { x, y } = toLocal(e);
+
+    const hitPoint = hitTestWirePoint(circuit, x, y);
+    if (hitPoint) {
+      setMenu({ x, y, type: "point", ...hitPoint });
+      return;
+    }
 
     const hitPin = hitTestPin(circuit, x, y);
     if (hitPin) return;
@@ -390,6 +433,27 @@ export default function Canvas({
           {menu.type === "wire" && (
             <div className="min-w-44">
               <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                onClick={() => {
+                  const wire = circuit.wires.find((w) => w.id === menu.id);
+                  if (wire) {
+                    const from = findPinPos(circuit, wire.fromPinId);
+                    const to = findPinPos(circuit, wire.toPinId);
+                    const pts = buildWirePolyline(from, to, wire.points);
+                    const { pt } = closestPointOnPolyline(
+                      { x: menu.x, y: menu.y },
+                      pts
+                    );
+                    const newPoints = [...(wire.points || [])];
+                    newPoints.push(pt);
+                    onUpdateWire(wire.id, newPoints);
+                  }
+                  closeMenu();
+                }}
+              >
+                Add point
+              </button>
+              <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
                 onClick={() => {
                   onDeleteWire(menu.id);
@@ -397,6 +461,26 @@ export default function Canvas({
                 }}
               >
                 Delete wire
+              </button>
+            </div>
+          )}
+
+          {menu.type === "point" && (
+            <div className="min-w-44">
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
+                onClick={() => {
+                  const { wireId, pointIndex } = menu;
+                  const wire = circuit.wires.find((w) => w.id === wireId);
+                  if (wire) {
+                    const newPoints = [...(wire.points || [])];
+                    newPoints.splice(pointIndex, 1);
+                    onUpdateWire(wireId, newPoints);
+                  }
+                  closeMenu();
+                }}
+              >
+                Delete point
               </button>
             </div>
           )}
@@ -411,37 +495,6 @@ export default function Canvas({
     </div>
   );
 }
-
-// ---------------- helper funcs ----------------
-
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-function pinPosition(c, p) {
-  if (p.dir === "out") return { x: c.x + c.w, y: c.y + c.h / 2 };
-
-  const ins = c.pins.filter((pp) => pp.dir === "in");
-  const idx = ins.findIndex((pp) => pp.id === p.id);
-  const gap = c.h / (ins.length + 1);
-  return { x: c.x, y: c.y + gap * (idx + 1) };
-}
-
-function findPinPos(circuit, pinId) {
-  for (const c of circuit.components) {
-    for (const p of c.pins) {
-      if (p.id === pinId) return pinPosition(c, p);
-    }
-  }
-  return null;
-}
-
 function findPin(circuit, pinId) {
   for (const c of circuit.components) {
     const p = c.pins.find((pp) => pp.id === pinId);
@@ -449,30 +502,6 @@ function findPin(circuit, pinId) {
   }
   return null;
 }
-
-function hitTestPin(circuit, x, y) {
-  for (const c of circuit.components) {
-    for (const p of c.pins) {
-      const pos = pinPosition(c, p);
-      const dx = x - pos.x;
-      const dy = y - pos.y;
-      if (dx * dx + dy * dy <= PIN_RADIUS * PIN_RADIUS) {
-        return { comp: c, pin: p, x: pos.x, y: pos.y };
-      }
-    }
-  }
-  return null;
-}
-
-// function hitComponent(circuit, x, y) {
-//   for (let i = circuit.components.length - 1; i >= 0; i--) {
-//     const c = circuit.components[i];
-//     if (x (>=) c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) return c;
-//   }
-//   return null;
-// }
-
-// NOTE: Fix the typo above (PowerShell style) — keep correct JS condition:
 function hitComponent(circuit, x, y) {
   for (let i = circuit.components.length - 1; i >= 0; i--) {
     const c = circuit.components[i];
@@ -549,6 +578,54 @@ function hitTestWirePolyline(circuit, x, y) {
   return null;
 }
 
+function hitTestWirePoint(circuit, x, y) {
+  for (const w of circuit.wires) {
+    if (!w.points) continue;
+    for (let i = 0; i < w.points.length; i++) {
+      const p = w.points[i];
+      const dx = x - p.x;
+      const dy = y - p.y;
+      if (dx * dx + dy * dy < PIN_RADIUS * PIN_RADIUS) {
+        return { wireId: w.id, pointIndex: i };
+      }
+    }
+  }
+  return null;
+}
+
+function closestPointOnPolyline(p, pts) {
+  let best = { t: 0, pt: pts[0], d: Infinity };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const abx = b.x - a.x;
+    const aby = b.y - a.y;
+    const apx = p.x - a.x;
+    const apy = p.y - a.y;
+
+    const ab2 = abx * abx + aby * aby;
+    if (ab2 === 0) {
+      const d = Math.hypot(apx, apy);
+      if (d < best.d) {
+        best = { t: i, pt: a, d };
+      }
+      continue;
+    }
+
+    let t = (apx * abx + apy * aby) / ab2;
+    t = Math.max(0, Math.min(1, t));
+
+    const cx = a.x + t * abx;
+    const cy = a.y + t * aby;
+    const d = Math.hypot(p.x - cx, p.y - cy);
+
+    if (d < best.d) {
+      best = { t: i + t, pt: { x: cx, y: cy }, d };
+    }
+  }
+  return best;
+}
+
 function distPointToPolyline(p, pts) {
   let best = Infinity;
   for (let i = 0; i < pts.length - 1; i++) {
@@ -572,4 +649,47 @@ function distPointToSegment(p, a, b) {
   const cx = a.x + t * abx;
   const cy = a.y + t * aby;
   return Math.hypot(p.x - cx, p.y - cy);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function pinPosition(c, p) {
+  if (p.dir === "out") return { x: c.x + c.w, y: c.y + c.h / 2 };
+
+  const ins = c.pins.filter((pp) => pp.dir === "in");
+  const idx = ins.findIndex((pp) => pp.id === p.id);
+  const gap = c.h / (ins.length + 1);
+  return { x: c.x, y: c.y + gap * (idx + 1) };
+}
+
+function findPinPos(circuit, pinId) {
+  for (const c of circuit.components) {
+    for (const p of c.pins) {
+      if (p.id === pinId) return pinPosition(c, p);
+    }
+  }
+  return null;
+}
+
+// NEW: hit test pins by distance
+function hitTestPin(circuit, x, y) {
+  for (const c of circuit.components) {
+    for (const p of c.pins) {
+      const pos = pinPosition(c, p);
+      const dx = x - pos.x;
+      const dy = y - pos.y;
+      if (dx * dx + dy * dy <= PIN_RADIUS * PIN_RADIUS) {
+        return { comp: c, pin: p, x: pos.x, y: pos.y };
+      }
+    }
+  }
+  return null;
 }
