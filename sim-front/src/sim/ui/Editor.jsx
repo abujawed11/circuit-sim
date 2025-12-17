@@ -123,6 +123,47 @@ export default function Editor() {
     updateCircuit(next);
   };
 
+  const onSplitWire = (wireId, point) => {
+    const next = structuredClone(circuit);
+    const wire = next.wires.find((w) => w.id === wireId);
+    if (!wire) return;
+
+    const junction = makeComponent(KIND.JUNCTION, point.x, point.y);
+    next.components.push(junction);
+
+    const oldToPinId = wire.toPinId;
+    wire.toPinId = junction.pins[0].id;
+
+    next.wires.push({
+      id: uid(),
+      fromPinId: junction.pins[1].id,
+      toPinId: oldToPinId,
+      points: [],
+    });
+    updateCircuit(next);
+  };
+
+  const onSplitWireAndStartDraft = (wireId, point) => {
+    const next = structuredClone(circuit);
+    const wire = next.wires.find((w) => w.id === wireId);
+    if (!wire) return;
+
+    const junction = makeComponent(KIND.JUNCTION, point.x, point.y);
+    next.components.push(junction);
+
+    const oldToPinId = wire.toPinId;
+    wire.toPinId = junction.pins[0].id;
+
+    next.wires.push({
+      id: uid(),
+      fromPinId: junction.pins[1].id,
+      toPinId: oldToPinId,
+      points: [],
+    });
+    updateCircuit(next);
+    return junction.pins[1].id;
+  };
+
   const onDragOver = (e) => {
     e.preventDefault();
   };
@@ -191,6 +232,8 @@ export default function Editor() {
           onDuplicateComponent={duplicateComponent}
           onDeleteWire={deleteWire}
           onUpdateWire={onUpdateWire}
+          onSplitWire={onSplitWire}
+          onSplitWireAndStartDraft={onSplitWireAndStartDraft}
         />
       </div>
     </div>

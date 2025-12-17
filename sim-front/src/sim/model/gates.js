@@ -50,6 +50,13 @@ export const makeComponent = (kind, x, y) => {
         ...base,
         pins: [pin("A", "in"), pin("B", "in"), pin("Y", "out")],
       };
+    case KIND.JUNCTION:
+      return {
+        ...base,
+        w: 20,
+        h: 20,
+        pins: [pin("IN", "in"), pin("OUT", "out")],
+      };
 
     default:
       return base;

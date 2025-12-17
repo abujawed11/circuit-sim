@@ -16,6 +16,7 @@ export const KIND = {
   OR: "OR",
   NOT: "NOT",
   XOR: "XOR",
+  JUNCTION: "JUNCTION",
 };
 
 // Circuit structure:

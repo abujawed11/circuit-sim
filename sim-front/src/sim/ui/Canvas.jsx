@@ -34,6 +34,8 @@ export default function Canvas({
   onDuplicateComponent,
   onDeleteWire,
   onUpdateWire,
+  onSplitWire,
+  onSplitWireAndStartDraft,
 }) {
   const ref = useRef(null);
 
@@ -271,18 +273,23 @@ export default function Canvas({
       setSelectedWireId(null);
 
       if (!draft) {
-        // start only from OUT pin
-        if (hitPin.pin.dir === "out") {
-          setDraft({ fromPinId: hitPin.pin.id, points: [] });
-        }
+        setDraft({ fromPinId: hitPin.pin.id, points: [] });
       } else {
-        // finish only on IN pin
-        if (hitPin.pin.dir === "in") {
-          onConnectPins(draft.fromPinId, hitPin.pin.id, draft.points);
-          setDraft(null);
-        }
+        onConnectPins(draft.fromPinId, hitPin.pin.id, draft.points);
+        setDraft(null);
       }
       return;
+    }
+
+    if (draft) {
+      const hitW = hitTestWirePolyline(circuit, x, y);
+      if (hitW) {
+        onSplitWire(hitW.id, { x: sx, y: sy });
+        const junction = circuit.components[circuit.components.length - 1];
+        onConnectPins(draft.fromPinId, junction.pins[0].id, draft.points);
+        setDraft(null);
+        return;
+      }
     }
 
     // 2) if drafting, clicking empty adds a route point
@@ -312,9 +319,6 @@ export default function Canvas({
       setSelectedCompId(null);
       return;
     }
-
-    // 5) place
-    // if (!hitComp) onPlace(sx - 60, sy - 35);
   };
 
   const onContextMenu = (e) => {
@@ -454,6 +458,19 @@ export default function Canvas({
                 Add point
               </button>
               <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                onClick={() => {
+                  const newPinId = onSplitWireAndStartDraft(menu.id, {
+                    x: menu.x,
+                    y: menu.y,
+                  });
+                  setDraft({ fromPinId: newPinId, points: [] });
+                  closeMenu();
+                }}
+              >
+                Connect from here
+              </button>
+              <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
                 onClick={() => {
                   onDeleteWire(menu.id);
@@ -467,6 +484,16 @@ export default function Canvas({
 
           {menu.type === "point" && (
             <div className="min-w-44">
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                onClick={() => {
+                  const newPinId = onSplitWireAndStartDraft(menu.wireId, menu);
+                  setDraft({ fromPinId: newPinId, points: [] });
+                  closeMenu();
+                }}
+              >
+                Connect from here
+              </button>
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
                 onClick={() => {

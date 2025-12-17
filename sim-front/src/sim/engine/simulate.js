@@ -96,6 +96,16 @@ export const simulate = (circuit) => {
         setOut("Y", xor2(a, b));
       }
 
+      if (c.kind === KIND.JUNCTION) {
+        const input = inPins[0]?.value ?? LV.X;
+        for (const p of outPins) {
+          if (p.value !== input) {
+            p.value = input;
+            changed = true;
+          }
+        }
+      }
+
       // LED has no output; it just reads IN pin (used for UI glow)
       // INPUT output already seeded
     }
