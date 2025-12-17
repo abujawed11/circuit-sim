@@ -54,6 +54,11 @@ export default function Canvas({
   const [menu, setMenu] = useState(null);
   const closeMenu = () => setMenu(null);
 
+  // Hover states for UX feedback
+  const [hoveredPin, setHoveredPin] = useState(null); // { comp, pin, x, y }
+  const [hoveredJunction, setHoveredJunction] = useState(null); // component object
+  const [toast, setToast] = useState(null); // { message }
+
   const dragMovedRef = React.useRef(false);
   const suppressClickRef = React.useRef(false);
   const dragStartRef = React.useRef({ x: 0, y: 0 });
@@ -158,6 +163,37 @@ export default function Canvas({
         const cx = c.x + c.w / 2;
         const cy = c.y + c.h / 2;
 
+        const isHovered = hoveredJunction?.id === c.id;
+
+        // Hover highlight (before the normal glow)
+        if (isHovered) {
+          ctx.save();
+          ctx.globalAlpha = 0.4;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 18, 0, Math.PI * 2);
+
+          if (draft) {
+            // During draft: show green for valid, red for invalid
+            const fromMeta = getPinMeta(draft.fromPinId);
+            const jInPin = c.pins.find((p) => p.name === "IN");
+            const jOutPin = c.pins.find((p) => p.name === "OUT");
+
+            let isValid = false;
+            if (fromMeta) {
+              // OUT can connect to junction IN, IN can connect to junction OUT
+              if (fromMeta.pin.dir === "out" && jInPin) isValid = true;
+              if (fromMeta.pin.dir === "in" && jOutPin) isValid = true;
+            }
+
+            ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+          } else {
+            // Not drafting: neutral highlight
+            ctx.fillStyle = "#60a5fa";
+          }
+          ctx.fill();
+          ctx.restore();
+        }
+
         // subtle glow
         ctx.save();
         ctx.globalAlpha = 0.18;
@@ -217,6 +253,37 @@ export default function Canvas({
 
       for (const p of c.pins) {
         const pos = pinPosition(c, p);
+
+        // Check if this pin is hovered
+        const isHovered = hoveredPin?.pin?.id === p.id;
+
+        // Draw hover highlight
+        if (isHovered) {
+          ctx.save();
+          ctx.globalAlpha = 0.5;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+
+          if (draft) {
+            // During draft: show green for valid, red for invalid
+            const fromMeta = getPinMeta(draft.fromPinId);
+            let isValid = false;
+
+            if (fromMeta) {
+              // Valid if directions are opposite (out->in or in->out)
+              if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
+              if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
+            }
+
+            ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+          } else {
+            // Not drafting: neutral highlight
+            ctx.fillStyle = "#60a5fa";
+          }
+          ctx.fill();
+          ctx.restore();
+        }
+
         pinDot(ctx, pos.x, pos.y, p.value);
       }
     }
@@ -266,6 +333,22 @@ export default function Canvas({
         // Don't add to history during drag - only preview
         onUpdateWire(wireId, newPoints, false);
       }
+    } else {
+      // Track hover when not dragging
+      const junction = hitJunction(circuit, p.x, p.y);
+      if (junction) {
+        setHoveredJunction(junction);
+        setHoveredPin(null);
+      } else {
+        const pin = hitTestPin(circuit, p.x, p.y);
+        if (pin) {
+          setHoveredPin(pin);
+          setHoveredJunction(null);
+        } else {
+          setHoveredPin(null);
+          setHoveredJunction(null);
+        }
+      }
     }
   };
 
@@ -277,9 +360,45 @@ export default function Canvas({
     return null;
   };
 
+  // Show toast message
+  const showToast = (message) => {
+    setToast({ message });
+    setTimeout(() => setToast(null), 2000);
+  };
+
+  // Wrapper for onConnectPins with validation
+  const tryConnectPins = (fromPinId, toPinId, points = []) => {
+    const fromMeta = getPinMeta(fromPinId);
+    const toMeta = getPinMeta(toPinId);
+
+    if (!fromMeta || !toMeta) return;
+
+    const fromDir = fromMeta.pin.dir;
+    const toDir = toMeta.pin.dir;
+
+    // Check if connection is valid
+    if (fromDir === toDir) {
+      // Invalid: same direction
+      if (fromDir === "in") {
+        showToast("Invalid connection: IN → IN");
+      } else {
+        showToast("Invalid connection: OUT → OUT");
+      }
+      return;
+    }
+
+    // Valid connection - proceed
+    onConnectPins(fromPinId, toPinId, points);
+  };
+
 
   const onMouseDown = (e) => {
     closeMenu();
+
+    // Clear hover states when starting drag
+    setHoveredPin(null);
+    setHoveredJunction(null);
+
     const { x, y } = toLocal(e);
     dragMovedRef.current = false;
     dragStartRef.current = { x, y };
@@ -362,6 +481,11 @@ export default function Canvas({
     }
     if (e.button === 2) return;
     closeMenu();
+
+    // Clear hover states on click
+    setHoveredPin(null);
+    setHoveredJunction(null);
+
     const { x, y } = toLocal(e);
     const sx = snap(x);
     const sy = snap(y);
@@ -389,7 +513,7 @@ export default function Canvas({
         // If draft started from IN  => finish onto junction OUT (so connectPins can flip)
         const targetPinId = start.pin.dir === "out" ? jIn : jOut;
 
-        onConnectPins(draft.fromPinId, targetPinId, draft.points);
+        tryConnectPins(draft.fromPinId, targetPinId, draft.points);
         setDraft(null);
       }
       return;
@@ -404,7 +528,7 @@ export default function Canvas({
       if (!draft) {
         setDraft({ fromPinId: hitPin.pin.id, points: [] });
       } else {
-        onConnectPins(draft.fromPinId, hitPin.pin.id, draft.points);
+        tryConnectPins(draft.fromPinId, hitPin.pin.id, draft.points);
         setDraft(null);
       }
       return;
@@ -416,7 +540,7 @@ export default function Canvas({
       if (hitW) {
         onSplitWire(hitW.id, { x: sx, y: sy });
         const junction = circuit.components[circuit.components.length - 1];
-        onConnectPins(draft.fromPinId, junction.pins[0].id, draft.points);
+        tryConnectPins(draft.fromPinId, junction.pins[0].id, draft.points);
         setDraft(null);
         return;
       }
@@ -455,6 +579,10 @@ export default function Canvas({
   const onContextMenu = (e) => {
     e.preventDefault();
     const { x, y } = toLocal(e);
+
+    // Clear hover states
+    setHoveredPin(null);
+    setHoveredJunction(null);
 
     const j = hitJunction(circuit, x, y);
     if (j) {
@@ -695,6 +823,18 @@ export default function Canvas({
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* Toast notification for invalid connections */}
+      {toast && (
+        <div
+          className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium"
+          style={{
+            animation: "fadeIn 0.2s ease-in-out",
+          }}
+        >
+          {toast.message}
         </div>
       )}
     </div>
