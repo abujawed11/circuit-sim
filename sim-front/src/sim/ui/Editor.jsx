@@ -41,14 +41,19 @@ export default function Editor() {
         return clone;
     }, [circuit]);
 
-    const moveComponent = (compId, x, y) => {
+    const moveComponent = (compId, x, y, addToHistory = true) => {
         const next = structuredClone(circuit);
         const c = next.components.find((cc) => cc.id === compId);
         if (c) {
             c.x = x;
             c.y = y;
         }
-        updateCircuit(next);
+        if (addToHistory) {
+            updateCircuit(next);
+        } else {
+            // Preview only, don't add to history
+            setCircuit(next);
+        }
     };
 
     const deleteComponent = (compId) => {
@@ -144,13 +149,18 @@ const connectPins = (aPinId, bPinId, points = []) => {
 
 
 
-    const onUpdateWire = (wireId, newPoints) => {
+    const onUpdateWire = (wireId, newPoints, addToHistory = true) => {
         const next = structuredClone(circuit);
         const wire = next.wires.find((w) => w.id === wireId);
         if (wire) {
             wire.points = newPoints;
         }
-        updateCircuit(next);
+        if (addToHistory) {
+            updateCircuit(next);
+        } else {
+            // Preview only, don't add to history
+            setCircuit(next);
+        }
     };
 
     const onSplitWire = (wireId, point) => {

@@ -254,7 +254,8 @@ export default function Canvas({
         // 2px movement threshold
         dragMovedRef.current = true;
       }
-      onMoveComponent(drag.compId, p.x - drag.dx, p.y - drag.dy);
+      // Don't add to history during drag - only preview
+      onMoveComponent(drag.compId, p.x - drag.dx, p.y - drag.dy, false);
     } else if (pointDrag) {
       const { wireId, pointIndex, dx, dy } = pointDrag;
       const wire = circuit.wires.find((w) => w.id === wireId);
@@ -262,7 +263,8 @@ export default function Canvas({
         const newPoints = [...(wire.points || [])];
         // Use raw position for smooth dragging (snap on mouse up)
         newPoints[pointIndex] = { x: p.x - dx, y: p.y - dy };
-        onUpdateWire(wireId, newPoints);
+        // Don't add to history during drag - only preview
+        onUpdateWire(wireId, newPoints, false);
       }
     }
   };
@@ -377,19 +379,22 @@ export default function Canvas({
   // };
 
   const onMouseUp = (e) => {
+    const p = toLocal(e);
+
+    // Add component move to history when drag ends
     if (drag && dragMovedRef.current) {
       suppressClickRef.current = true;
+      onMoveComponent(drag.compId, p.x - drag.dx, p.y - drag.dy, true);
     }
 
-    // Snap wire point to grid when drag ends
+    // Snap wire point to grid when drag ends and add to history
     if (pointDrag) {
-      const p = toLocal(e);
       const { wireId, pointIndex, dx, dy } = pointDrag;
       const wire = circuit.wires.find((w) => w.id === wireId);
       if (wire) {
         const newPoints = [...(wire.points || [])];
         newPoints[pointIndex] = { x: snap(p.x - dx), y: snap(p.y - dy) };
-        onUpdateWire(wireId, newPoints);
+        onUpdateWire(wireId, newPoints, true);
       }
     }
 
