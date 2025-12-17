@@ -24,6 +24,66 @@ const pinDot = (ctx, x, y, v) => {
 
 const snap = (n) => Math.round(n / GRID) * GRID;
 
+// Gate drawing functions
+const drawAndGate = (ctx, x, y, w, h) => {
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y + h);
+  ctx.lineTo(x + w / 2, y + h);
+  ctx.arc(x + w / 2, y + h / 2, h / 2, Math.PI / 2, -Math.PI / 2, true);
+  ctx.lineTo(x + w / 2, y);
+  ctx.closePath();
+};
+
+const drawOrGate = (ctx, x, y, w, h) => {
+  ctx.beginPath();
+  // Back curve
+  ctx.moveTo(x, y);
+  ctx.quadraticCurveTo(x + w * 0.2, y + h / 2, x, y + h);
+  // Bottom to output - less pointed, more rounded
+  ctx.bezierCurveTo(
+    x + w * 0.3, y + h * 0.9,
+    x + w * 0.7, y + h * 0.7,
+    x + w, y + h / 2
+  );
+  // Top from output - less pointed, more rounded
+  ctx.bezierCurveTo(
+    x + w * 0.7, y + h * 0.3,
+    x + w * 0.3, y + h * 0.1,
+    x, y
+  );
+  ctx.closePath();
+};
+
+const drawXorGate = (ctx, x, y, w, h) => {
+  // Extra line for XOR
+  ctx.beginPath();
+  ctx.moveTo(x - 6, y);
+  ctx.quadraticCurveTo(x - 6 + w * 0.15, y + h / 2, x - 6, y + h);
+  ctx.stroke();
+
+  // Main OR shape
+  drawOrGate(ctx, x, y, w, h);
+};
+
+const drawNotGate = (ctx, x, y, w, h) => {
+  const triangleW = w - 10; // Leave space for inverter bubble
+
+  ctx.beginPath();
+  // Triangle
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y + h);
+  ctx.lineTo(x + triangleW, y + h / 2);
+  ctx.closePath();
+};
+
+const drawInverterBubble = (ctx, x, y) => {
+  ctx.beginPath();
+  ctx.arc(x, y, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+};
+
 export default function Canvas({
   circuit,
   onPlace,
@@ -224,36 +284,78 @@ export default function Canvas({
         continue;
       }
 
-      ctx.fillStyle = "#121212";
-      ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
-      ctx.lineWidth = isSel ? 3 : 2;
+      // Draw logic gates with proper shapes
+      const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR].includes(c.kind);
 
-      roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-      ctx.fill();
-      ctx.stroke();
+      if (isLogicGate) {
+        // Draw gate shape
+        ctx.fillStyle = "#121212";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+        ctx.lineWidth = isSel ? 3 : 2;
 
-      // title
-      ctx.fillStyle = "#e5e5e5";
-      ctx.font = "14px system-ui";
-      ctx.fillText(c.kind, c.x + 12, c.y + 22);
+        const gateX = c.x + 10;
+        const gateY = c.y + 5;
+        const gateW = c.w - 20;
+        const gateH = c.h - 10;
 
-      if (c.kind === KIND.INPUT) {
-        ctx.fillStyle = c.state.value === LV.HIGH ? "#FAD90E" : "#666";
-        ctx.beginPath();
-        ctx.arc(c.x + c.w - 18, c.y + 18, 8, 0, Math.PI * 2);
+        if (c.kind === KIND.AND) {
+          drawAndGate(ctx, gateX, gateY, gateW, gateH);
+        } else if (c.kind === KIND.OR) {
+          drawOrGate(ctx, gateX, gateY, gateW, gateH);
+        } else if (c.kind === KIND.XOR) {
+          drawXorGate(ctx, gateX, gateY, gateW, gateH);
+        } else if (c.kind === KIND.NOT) {
+          drawNotGate(ctx, gateX, gateY, gateW, gateH);
+        }
+
         ctx.fill();
-      }
+        ctx.stroke();
 
-      if (c.kind === KIND.LED) {
-        const inPin = c.pins.find((p) => p.name === "IN");
-        const on = inPin?.value === LV.HIGH;
-        ctx.fillStyle = on ? "rgba(250,217,14,0.25)" : "rgba(255,255,255,0.04)";
-        roundRect(ctx, c.x + 8, c.y + 30, c.w - 16, c.h - 38, 10);
-        ctx.fill();
+        // Draw inverter bubble for NOT gate
+        if (c.kind === KIND.NOT) {
+          ctx.fillStyle = "#121212";
+          drawInverterBubble(ctx, gateX + gateW + 5, gateY + gateH / 2);
+        }
 
-        ctx.fillStyle = on ? "#FAD90E" : "#777";
+        // Draw gate label
+        ctx.fillStyle = "#e5e5e5";
         ctx.font = "12px system-ui";
-        ctx.fillText(on ? "ON" : "OFF", c.x + 12, c.y + c.h - 12);
+        ctx.textAlign = "center";
+        ctx.fillText(c.kind, c.x + c.w / 2, c.y + c.h - 8);
+        ctx.textAlign = "left"; // Reset to default
+      } else {
+        // Draw INPUT and LED as boxes
+        ctx.fillStyle = "#121212";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+        ctx.lineWidth = isSel ? 3 : 2;
+
+        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        // title
+        ctx.fillStyle = "#e5e5e5";
+        ctx.font = "14px system-ui";
+        ctx.fillText(c.kind, c.x + 12, c.y + 22);
+
+        if (c.kind === KIND.INPUT) {
+          ctx.fillStyle = c.state.value === LV.HIGH ? "#10b981" : "#666";
+          ctx.beginPath();
+          ctx.arc(c.x + c.w - 18, c.y + 18, 8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        if (c.kind === KIND.LED) {
+          const inPin = c.pins.find((p) => p.name === "IN");
+          const on = inPin?.value === LV.HIGH;
+          ctx.fillStyle = on ? "rgba(250,217,14,0.25)" : "rgba(255,255,255,0.04)";
+          roundRect(ctx, c.x + 8, c.y + 30, c.w - 16, c.h - 38, 10);
+          ctx.fill();
+
+          ctx.fillStyle = on ? "#FAD90E" : "#777";
+          ctx.font = "12px system-ui";
+          ctx.fillText(on ? "ON" : "OFF", c.x + 12, c.y + c.h - 12);
+        }
       }
 
       for (const p of c.pins) {
@@ -1091,6 +1193,25 @@ function pinPosition(c, p) {
     return { x: c.x + c.w / 2, y: c.y + c.h / 2 };
   }
 
+  // Logic gates have insets, adjust pin positions
+  const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR].includes(c.kind);
+
+  if (isLogicGate) {
+    if (p.dir === "out") {
+      // Output pin at right edge of gate shape
+      // For NOT gate, add extra space for inverter bubble
+      const extraOffset = c.kind === KIND.NOT ? 10 : 0;
+      return { x: c.x + c.w - 10 + extraOffset, y: c.y + c.h / 2 };
+    } else {
+      // Input pins at left edge of gate shape
+      const ins = c.pins.filter((pp) => pp.dir === "in");
+      const idx = ins.findIndex((pp) => pp.id === p.id);
+      const gap = c.h / (ins.length + 1);
+      return { x: c.x + 10, y: c.y + gap * (idx + 1) };
+    }
+  }
+
+  // Non-logic gates (INPUT, LED) use box edges
   if (p.dir === "out") return { x: c.x + c.w, y: c.y + c.h / 2 };
 
   const ins = c.pins.filter((pp) => pp.dir === "in");
