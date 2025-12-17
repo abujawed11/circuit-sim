@@ -24,62 +24,63 @@ const pinDot = (ctx, x, y, v) => {
 
 const snap = (n) => Math.round(n / GRID) * GRID;
 
-// Gate drawing functions
+// SVG path-based gate drawing (pixel-perfect standard symbols)
 const drawAndGate = (ctx, x, y, w, h) => {
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x, y + h);
-  ctx.lineTo(x + w / 2, y + h);
-  ctx.arc(x + w / 2, y + h / 2, h / 2, Math.PI / 2, -Math.PI / 2, true);
-  ctx.lineTo(x + w / 2, y);
-  ctx.closePath();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(w / 60, h / 60);
+
+  const path = new Path2D(`M 0,0 L 0,60 L 30,60 A 30,30 0 0,0 30,0 Z`);
+  ctx.fill(path);
+  ctx.stroke(path);
+
+  ctx.restore();
 };
 
 const drawOrGate = (ctx, x, y, w, h) => {
-  ctx.beginPath();
-  // Back curve
-  ctx.moveTo(x, y);
-  ctx.quadraticCurveTo(x + w * 0.2, y + h / 2, x, y + h);
-  // Bottom to output - less pointed, more rounded
-  ctx.bezierCurveTo(
-    x + w * 0.3, y + h * 0.9,
-    x + w * 0.7, y + h * 0.7,
-    x + w, y + h / 2
-  );
-  // Top from output - less pointed, more rounded
-  ctx.bezierCurveTo(
-    x + w * 0.7, y + h * 0.3,
-    x + w * 0.3, y + h * 0.1,
-    x, y
-  );
-  ctx.closePath();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(w / 60, h / 60);
+
+  const path = new Path2D(`M 0,0 Q 12,30 0,60 Q 30,55 60,30 Q 30,5 0,0 Z`);
+  ctx.fill(path);
+  ctx.stroke(path);
+
+  ctx.restore();
 };
 
 const drawXorGate = (ctx, x, y, w, h) => {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(w / 60, h / 60);
+
   // Extra line for XOR
-  ctx.beginPath();
-  ctx.moveTo(x - 6, y);
-  ctx.quadraticCurveTo(x - 6 + w * 0.15, y + h / 2, x - 6, y + h);
-  ctx.stroke();
+  const extraLine = new Path2D(`M -8,0 Q -2,30 -8,60`);
+  ctx.stroke(extraLine);
 
   // Main OR shape
-  drawOrGate(ctx, x, y, w, h);
+  const path = new Path2D(`M 0,0 Q 12,30 0,60 Q 30,55 60,30 Q 30,5 0,0 Z`);
+  ctx.fill(path);
+  ctx.stroke(path);
+
+  ctx.restore();
 };
 
 const drawNotGate = (ctx, x, y, w, h) => {
-  const triangleW = w - 10; // Leave space for inverter bubble
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale((w - 10) / 60, h / 60);
 
-  ctx.beginPath();
-  // Triangle
-  ctx.moveTo(x, y);
-  ctx.lineTo(x, y + h);
-  ctx.lineTo(x + triangleW, y + h / 2);
-  ctx.closePath();
+  const path = new Path2D(`M 0,0 L 0,60 L 50,30 Z`);
+  ctx.fill(path);
+  ctx.stroke(path);
+
+  ctx.restore();
 };
 
-const drawInverterBubble = (ctx, x, y) => {
+const drawInverterBubble = (ctx, x, y, r = 5) => {
   ctx.beginPath();
-  ctx.arc(x, y, 5, 0, Math.PI * 2);
+  ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 };
@@ -314,7 +315,8 @@ export default function Canvas({
         // Draw inverter bubble for NOT gate
         if (c.kind === KIND.NOT) {
           ctx.fillStyle = "#121212";
-          drawInverterBubble(ctx, gateX + gateW + 5, gateY + gateH / 2);
+          const bubbleX = gateX + (gateW - 10) + 5; // At the end of triangle
+          drawInverterBubble(ctx, bubbleX, gateY + gateH / 2);
         }
 
         // Draw gate label
@@ -1197,17 +1199,27 @@ function pinPosition(c, p) {
   const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR].includes(c.kind);
 
   if (isLogicGate) {
+    const gateX = c.x + 10;
+    const gateW = c.w - 20;
+
     if (p.dir === "out") {
       // Output pin at right edge of gate shape
-      // For NOT gate, add extra space for inverter bubble
-      const extraOffset = c.kind === KIND.NOT ? 10 : 0;
-      return { x: c.x + c.w - 10 + extraOffset, y: c.y + c.h / 2 };
+      if (c.kind === KIND.NOT) {
+        // NOT gate: at the end of triangle + bubble (10px space for bubble)
+        return { x: gateX + (gateW - 10) + 10, y: c.y + c.h / 2 };
+      } else {
+        // AND/OR/XOR: at the right edge of gate
+        return { x: gateX + gateW, y: c.y + c.h / 2 };
+      }
     } else {
-      // Input pins at left edge of gate shape
+      // Input pins at left edge of gate shape (with slight inset for OR/XOR curves)
       const ins = c.pins.filter((pp) => pp.dir === "in");
       const idx = ins.findIndex((pp) => pp.id === p.id);
       const gap = c.h / (ins.length + 1);
-      return { x: c.x + 10, y: c.y + gap * (idx + 1) };
+
+      // OR and XOR gates have curved left edge, inset pins slightly
+      const inputInset = (c.kind === KIND.OR || c.kind === KIND.XOR) ? 5 : 0;
+      return { x: gateX + inputInset, y: c.y + gap * (idx + 1) };
     }
   }
 
