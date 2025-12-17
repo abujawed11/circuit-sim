@@ -696,11 +696,17 @@ export default function Canvas({
                     const from = findPinPos(circuit, wire.fromPinId);
                     const to = findPinPos(circuit, wire.toPinId);
                     const pts = buildWirePolyline(from, to, wire.points);
-                    const { pt } = closestPointOnPolyline({ x: menu.x, y: menu.y }, pts);
+                    const { pt, t } = closestPointOnPolyline({ x: menu.x, y: menu.y }, pts);
 
                     const snapped = { x: snap(pt.x), y: snap(pt.y) };
                     const newPoints = [...(wire.points || [])];
-                    newPoints.push(snapped);
+
+                    // Insert point at correct position based on where we clicked
+                    // t represents position along polyline: 0=start, pts.length-1=end
+                    // Since pts includes from and to pins, we need to subtract 1 for the insert index
+                    const insertIndex = Math.max(0, Math.min(newPoints.length, Math.floor(t)));
+                    newPoints.splice(insertIndex, 0, snapped);
+
                     onUpdateWire(wire.id, newPoints);
                   }
                   closeMenu();
@@ -788,7 +794,8 @@ export default function Canvas({
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800"
                 onClick={() => {
-                  onPlace(snap(menu.x) - 12, snap(menu.y) - 12, KIND.JUNCTION);
+                  // Center junction (20x20) at clicked position
+                  onPlace(snap(menu.x) - 10, snap(menu.y) - 10, KIND.JUNCTION);
                   closeMenu();
                 }}
               >

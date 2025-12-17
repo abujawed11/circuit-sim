@@ -158,7 +158,8 @@ const connectPins = (aPinId, bPinId, points = []) => {
         const wire = next.wires.find((w) => w.id === wireId);
         if (!wire) return;
 
-        const junction = makeComponent(KIND.JUNCTION, point.x, point.y);
+        // Create junction centered at the clicked point (junction is 20x20)
+        const junction = makeComponent(KIND.JUNCTION, point.x - 10, point.y - 10);
         next.components.push(junction);
 
         const oldToPinId = wire.toPinId;
@@ -178,7 +179,8 @@ const connectPins = (aPinId, bPinId, points = []) => {
         const wire = next.wires.find((w) => w.id === wireId);
         if (!wire) return;
 
-        const junction = makeComponent(KIND.JUNCTION, point.x, point.y);
+        // Create junction centered at the clicked point (junction is 20x20)
+        const junction = makeComponent(KIND.JUNCTION, point.x - 10, point.y - 10);
         next.components.push(junction);
 
         const oldToPinId = wire.toPinId;
