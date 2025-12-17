@@ -24,17 +24,53 @@ const palette = [
     { kind: KIND.JK_FF, label: "JK Flip-Flop" },
 ];
 
+const STORAGE_KEY = "circuit-sim-state";
+
+// Load circuit from localStorage
+const loadCircuitFromStorage = () => {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            return parsed;
+        }
+    } catch (err) {
+        console.error("Failed to load circuit:", err);
+    }
+    return makeEmptyCircuit();
+};
+
+// Save circuit to localStorage
+const saveCircuitToStorage = (circuit) => {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(circuit));
+    } catch (err) {
+        console.error("Failed to save circuit:", err);
+    }
+};
+
 export default function Editor() {
-    const [circuit, setCircuit] = useState(() => makeEmptyCircuit());
+    const [circuit, setCircuit] = useState(() => loadCircuitFromStorage());
     const [simTick, setSimTick] = useState(0);
 
     const [selectedKind, setSelectedKind] = useState(KIND.AND);
-    const [history, setHistory] = useState([makeEmptyCircuit()]);
+    const [history, setHistory] = useState([loadCircuitFromStorage()]);
     const [historyIndex, setHistoryIndex] = useState(0);
 
 
     const [paletteQuery, setPaletteQuery] = useState("");
+    const [icCreationDialog, setIcCreationDialog] = useState(null); // { selectedCompIds, selectedWireIds }
 
+    const [currentSelection, setCurrentSelection] = useState({
+        compIds: [],
+        wireIds: [],
+    });
+
+
+    // Auto-save circuit to localStorage whenever it changes
+    React.useEffect(() => {
+        saveCircuitToStorage(circuit);
+    }, [circuit]);
 
     React.useEffect(() => {
         const id = setInterval(() => {
@@ -620,11 +656,28 @@ export default function Editor() {
                         <div>• Click a component then click canvas to place</div>
                         <div>• Drag from palette to canvas to place</div>
                         <div>• OUT → IN for valid wiring (others show error)</div>
+                        <div className="text-xs opacity-70">
+                            Selected: {currentSelection.compIds.length} comps, {currentSelection.wireIds.length} wires
+                        </div>
+
                     </div>
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-neutral-800 sticky bottom-0 bg-neutral-950/80 backdrop-blur">
+                <div className="p-4 border-t border-neutral-800 sticky bottom-0 bg-neutral-950/80 backdrop-blur space-y-2">
+                    <button
+                        // onClick={() => setIcCreationDialog({ open: true })}
+                        onClick={() => {
+                            setIcCreationDialog({
+                                open: true,
+                                selection: currentSelection, // ✅ PASS SELECTION
+                            });
+                        }}
+
+                        className="w-full rounded-xl border border-yellow-600/50 bg-yellow-900/20 hover:bg-yellow-900/30 px-3 py-2 text-sm text-yellow-300 font-semibold"
+                    >
+                        ⚡ Create IC from Selection
+                    </button>
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             onClick={undo}
@@ -633,10 +686,57 @@ export default function Editor() {
                             Undo
                         </button>
                         <button
-                            onClick={() => updateCircuit(makeEmptyCircuit())}
+                            onClick={() => {
+                                if (confirm("Clear entire canvas? This cannot be undone.")) {
+                                    updateCircuit(makeEmptyCircuit());
+                                }
+                            }}
                             className="rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 px-3 py-2 text-sm text-left"
                         >
                             Clear
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            onClick={() => {
+                                const dataStr = JSON.stringify(circuit, null, 2);
+                                const blob = new Blob([dataStr], { type: "application/json" });
+                                const url = URL.createObjectURL(blob);
+                                const link = document.createElement("a");
+                                link.href = url;
+                                link.download = `circuit-${Date.now()}.json`;
+                                link.click();
+                                URL.revokeObjectURL(url);
+                            }}
+                            className="rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 px-3 py-2 text-sm text-left"
+                        >
+                            Export
+                        </button>
+                        <button
+                            onClick={() => {
+                                const input = document.createElement("input");
+                                input.type = "file";
+                                input.accept = ".json";
+                                input.onchange = (e) => {
+                                    const file = e.target.files[0];
+                                    if (file) {
+                                        const reader = new FileReader();
+                                        reader.onload = (e) => {
+                                            try {
+                                                const loaded = JSON.parse(e.target.result);
+                                                updateCircuit(loaded);
+                                            } catch (err) {
+                                                alert("Failed to load circuit: " + err.message);
+                                            }
+                                        };
+                                        reader.readAsText(file);
+                                    }
+                                };
+                                input.click();
+                            }}
+                            className="rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 px-3 py-2 text-sm text-left"
+                        >
+                            Import
                         </button>
                     </div>
                 </div>
@@ -645,6 +745,24 @@ export default function Editor() {
 
             {/* Canvas */}
             <div className="flex-1" onDragOver={onDragOver} onDrop={onDrop}>
+                {/* <Canvas
+                    circuit={simulated}
+                    onPlace={addAt}
+                    onToggleInput={toggleInput}
+                    onConnectPins={connectPins}
+                    onMoveComponent={moveComponent}
+                    onDeleteComponent={deleteComponent}
+                    onDuplicateComponent={duplicateComponent}
+                    onDeleteWire={deleteWire}
+                    onDeleteMultiple={deleteMultiple}
+                    onUpdateWire={onUpdateWire}
+                    onSplitWire={onSplitWire}
+                    onSplitWireAndStartDraft={onSplitWireAndStartDraft}
+                    onToggleClockMode={toggleClockMode}
+                    onSetComponentValue={setComponentValue}
+                    onSetButtonPressed={setButtonPressed}
+                /> */}
+
                 <Canvas
                     circuit={simulated}
                     onPlace={addAt}
@@ -661,7 +779,9 @@ export default function Editor() {
                     onToggleClockMode={toggleClockMode}
                     onSetComponentValue={setComponentValue}
                     onSetButtonPressed={setButtonPressed}
+                    onSelectionChange={setCurrentSelection}
                 />
+
             </div>
         </div>
     );

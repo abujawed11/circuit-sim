@@ -34,8 +34,20 @@ export const KIND = {
 // Circuit structure:
 // - components: placed items with pins
 // - wires: connect output pin -> input pin (v1)
-// Later we can add nodes/nets, but this is fastest for v1.
+// - icDefinitions: library of custom ICs created by user
 export const makeEmptyCircuit = () => ({
   components: [],
   wires: [],
+  icDefinitions: [], // Array of IC definitions
+});
+
+// IC Definition structure
+export const makeICDefinition = (name, inputPins, outputPins, internalCircuit) => ({
+  id: uid(),
+  name, // IC name (e.g., "HALF_ADDER")
+  inputPins, // Array of { name: "A", order: 0 }
+  outputPins, // Array of { name: "SUM", order: 0 }
+  internalComponents: internalCircuit.components, // Saved sub-circuit
+  internalWires: internalCircuit.wires,
+  createdAt: Date.now(),
 });

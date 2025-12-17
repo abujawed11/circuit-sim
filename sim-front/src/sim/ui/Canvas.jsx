@@ -99,7 +99,8 @@ export default function Canvas({
   onSplitWireAndStartDraft,
   onToggleClockMode,
   onSetComponentValue,
-  onSetButtonPressed
+  onSetButtonPressed,
+  onSelectionChange, // ✅ ADD THIS
 }) {
   const ref = useRef(null);
 
@@ -132,6 +133,13 @@ export default function Canvas({
   const dragMovedRef = React.useRef(false);
   const suppressClickRef = React.useRef(false);
   const dragStartRef = React.useRef({ x: 0, y: 0 });
+
+  React.useEffect(() => {
+    if (typeof onSelectionChange === "function") {
+      onSelectionChange({ compIds: selectedCompIds, wireIds: selectedWireIds });
+    }
+  }, [selectedCompIds, selectedWireIds]);
+
 
   const draw = () => {
     const canvas = ref.current;
