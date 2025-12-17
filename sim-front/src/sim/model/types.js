@@ -16,6 +16,9 @@ export const KIND = {
   OR: "OR",
   NOT: "NOT",
   XOR: "XOR",
+  NAND: "NAND",
+  NOR: "NOR",
+  XNOR: "XNOR",
   JUNCTION: "JUNCTION",
 };
 

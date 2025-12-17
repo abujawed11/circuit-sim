@@ -11,6 +11,9 @@ const palette = [
     { kind: KIND.AND, label: "AND" },
     { kind: KIND.OR, label: "OR" },
     { kind: KIND.XOR, label: "XOR" },
+    { kind: KIND.NAND, label: "NAND" },
+    { kind: KIND.NOR, label: "NOR" },
+    { kind: KIND.XNOR, label: "XNOR" },
 ];
 
 export default function Editor() {

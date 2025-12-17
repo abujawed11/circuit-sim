@@ -96,6 +96,24 @@ export const simulate = (circuit) => {
         setOut("Y", xor2(a, b));
       }
 
+      if (c.kind === KIND.NAND) {
+        const a = inPins.find((p) => p.name === "A")?.value ?? LV.X;
+        const b = inPins.find((p) => p.name === "B")?.value ?? LV.X;
+        setOut("Y", inv(and2(a, b)));
+      }
+
+      if (c.kind === KIND.NOR) {
+        const a = inPins.find((p) => p.name === "A")?.value ?? LV.X;
+        const b = inPins.find((p) => p.name === "B")?.value ?? LV.X;
+        setOut("Y", inv(or2(a, b)));
+      }
+
+      if (c.kind === KIND.XNOR) {
+        const a = inPins.find((p) => p.name === "A")?.value ?? LV.X;
+        const b = inPins.find((p) => p.name === "B")?.value ?? LV.X;
+        setOut("Y", inv(xor2(a, b)));
+      }
+
       if (c.kind === KIND.JUNCTION) {
         const input = inPins[0]?.value ?? LV.X;
         for (const p of outPins) {

@@ -46,6 +46,9 @@ export const makeComponent = (kind, x, y) => {
     case KIND.AND:
     case KIND.OR:
     case KIND.XOR:
+    case KIND.NAND:
+    case KIND.NOR:
+    case KIND.XNOR:
       return {
         ...base,
         pins: [pin("A", "in"), pin("B", "in"), pin("Y", "out")],

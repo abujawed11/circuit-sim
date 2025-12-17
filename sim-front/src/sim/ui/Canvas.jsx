@@ -285,7 +285,7 @@ export default function Canvas({
       }
 
       // Draw logic gates with proper shapes
-      const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR].includes(c.kind);
+      const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR, KIND.NAND, KIND.NOR, KIND.XNOR].includes(c.kind);
 
       if (isLogicGate) {
         // Draw gate shape
@@ -298,11 +298,11 @@ export default function Canvas({
         const gateW = c.w - 20;
         const gateH = c.h - 10;
 
-        if (c.kind === KIND.AND) {
+        if (c.kind === KIND.AND || c.kind === KIND.NAND) {
           drawAndGate(ctx, gateX, gateY, gateW, gateH);
-        } else if (c.kind === KIND.OR) {
+        } else if (c.kind === KIND.OR || c.kind === KIND.NOR) {
           drawOrGate(ctx, gateX, gateY, gateW, gateH);
-        } else if (c.kind === KIND.XOR) {
+        } else if (c.kind === KIND.XOR || c.kind === KIND.XNOR) {
           drawXorGate(ctx, gateX, gateY, gateW, gateH);
         } else if (c.kind === KIND.NOT) {
           drawNotGate(ctx, gateX, gateY, gateW, gateH);
@@ -311,10 +311,16 @@ export default function Canvas({
         ctx.fill();
         ctx.stroke();
 
-        // Draw inverter bubble for NOT gate
+        // Draw inverter bubble for NOT, NAND, NOR, XNOR gates
         if (c.kind === KIND.NOT) {
           ctx.fillStyle = "#121212";
+          drawInverterBubble(ctx, gateX + gateW + -5, gateY + gateH / 2, 7);
+        } else if (c.kind === KIND.NOR || c.kind === KIND.XNOR) {
+          ctx.fillStyle = "#121212";
           drawInverterBubble(ctx, gateX + gateW + 0, gateY + gateH / 2, 7);
+        } else if (c.kind === KIND.NAND) {
+          ctx.fillStyle = "#121212";
+          drawInverterBubble(ctx, gateX + gateW + -15, gateY + gateH / 2, 7);
         }
 
         // Draw gate label
@@ -1194,7 +1200,7 @@ function pinPosition(c, p) {
   }
 
   // Logic gates have insets, adjust pin positions
-  const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR].includes(c.kind);
+  const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR, KIND.NAND, KIND.NOR, KIND.XNOR].includes(c.kind);
 
   if (isLogicGate) {
     if (p.dir === "out") {
@@ -1209,6 +1215,12 @@ function pinPosition(c, p) {
         outputOffset = 1; // Distance from box edge to XOR gate output pin
       } else if (c.kind === KIND.NOT) {
         outputOffset = -2; // Distance from box edge to NOT gate output pin (includes bubble)
+      } else if (c.kind === KIND.NAND) {
+        outputOffset = 10; // Distance from box edge to NAND gate output pin (includes bubble)
+      } else if (c.kind === KIND.NOR) {
+        outputOffset = -4; // Distance from box edge to NOR gate output pin (includes bubble)
+      } else if (c.kind === KIND.XNOR) {
+        outputOffset = -4; // Distance from box edge to XNOR gate output pin (includes bubble)
       }
 
       return { x: c.x + c.w - outputOffset, y: c.y + c.h / 2 };
@@ -1220,12 +1232,12 @@ function pinPosition(c, p) {
 
       let inputOffset = 0;
 
-      if (c.kind === KIND.AND) {
-        inputOffset = 0; // Distance from box edge to AND gate input pins
-      } else if (c.kind === KIND.OR) {
-        inputOffset = 5; // Distance from box edge to OR gate input pins (curved back)
-      } else if (c.kind === KIND.XOR) {
-        inputOffset = 0; // Distance from box edge to XOR gate input pins (curved back)
+      if (c.kind === KIND.AND || c.kind === KIND.NAND) {
+        inputOffset = 0; // Distance from box edge to AND/NAND gate input pins
+      } else if (c.kind === KIND.OR || c.kind === KIND.NOR) {
+        inputOffset = 5; // Distance from box edge to OR/NOR gate input pins (curved back)
+      } else if (c.kind === KIND.XOR || c.kind === KIND.XNOR) {
+        inputOffset = 0; // Distance from box edge to XOR/XNOR gate input pins (curved back)
       } else if (c.kind === KIND.NOT) {
         inputOffset = 0; // Distance from box edge to NOT gate input pin
       }
