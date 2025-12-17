@@ -61,6 +61,23 @@ export const makeComponent = (kind, x, y) => {
         pins: [pin("IN", "in"), pin("OUT", "out")],
       };
 
+    case KIND.PROBE:
+      return {
+        ...base,
+        w: 60,
+        h: 60,
+        pins: [pin("IN", "in")],
+      };
+
+    case KIND.CLOCK:
+      return {
+        ...base,
+        w: 60,
+        h: 60,
+        state: { value: LV.LOW, interval: 1000 },
+        pins: [pin("OUT", "out")],
+      };
+
     default:
       return base;
   }

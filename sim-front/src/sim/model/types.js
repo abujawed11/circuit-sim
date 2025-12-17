@@ -20,6 +20,8 @@ export const KIND = {
   NOR: "NOR",
   XNOR: "XNOR",
   JUNCTION: "JUNCTION",
+  PROBE: "PROBE",
+  CLOCK: "CLOCK",
 };
 
 // Circuit structure:

@@ -14,6 +14,8 @@ const palette = [
     { kind: KIND.NAND, label: "NAND" },
     { kind: KIND.NOR, label: "NOR" },
     { kind: KIND.XNOR, label: "XNOR" },
+    { kind: KIND.PROBE, label: "Probe" },
+    { kind: KIND.CLOCK, label: "Clock" },
 ];
 
 export default function Editor() {
@@ -21,6 +23,43 @@ export default function Editor() {
     const [selectedKind, setSelectedKind] = useState(KIND.AND);
     const [history, setHistory] = useState([makeEmptyCircuit()]);
     const [historyIndex, setHistoryIndex] = useState(0);
+
+    // Clock ticker
+    React.useEffect(() => {
+        const interval = setInterval(() => {
+            setCircuit((prev) => {
+                const now = Date.now();
+                let changed = false;
+
+                // Check if any clock needs toggling
+                const nextComponents = prev.components.map((c) => {
+                    if (c.kind === KIND.CLOCK) {
+                        const period = c.state.interval || 1000;
+                        const lastTick = c.state.lastTick || 0;
+
+                        if (now - lastTick >= period) {
+                            changed = true;
+                            return {
+                                ...c,
+                                state: {
+                                    ...c.state,
+                                    value: c.state.value === LV.HIGH ? LV.LOW : LV.HIGH,
+                                    lastTick: now,
+                                },
+                            };
+                        }
+                    }
+                    return c;
+                });
+
+                if (changed) {
+                    return { ...prev, components: nextComponents };
+                }
+                return prev;
+            });
+        }, 50);
+        return () => clearInterval(interval);
+    }, []);
 
     const updateCircuit = (newCircuit) => {
         const newHistory = history.slice(0, historyIndex + 1);

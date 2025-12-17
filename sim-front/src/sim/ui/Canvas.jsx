@@ -284,6 +284,67 @@ export default function Canvas({
         continue;
       }
 
+      if (c.kind === KIND.PROBE) {
+        ctx.fillStyle = "#121212";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        const inPin = c.pins.find((p) => p.name === "IN");
+        const v = inPin?.value;
+        const txt = v === LV.HIGH ? "1" : v === LV.LOW ? "0" : "X";
+
+        ctx.fillStyle = v === LV.HIGH ? "#FAD90E" : v === LV.LOW ? "#555" : "#60A5FA";
+        ctx.font = "bold 24px system-ui";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(txt, c.x + c.w / 2, c.y + c.h / 2);
+        ctx.textAlign = "left"; // Reset
+        ctx.textBaseline = "alphabetic"; // Reset
+
+        // Label
+        ctx.fillStyle = "#e5e5e5";
+        ctx.font = "12px system-ui";
+        ctx.fillText("Probe", c.x + 12, c.y + 18);
+
+        // Draw pin
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        continue;
+      }
+
+      if (c.kind === KIND.CLOCK) {
+        ctx.fillStyle = "#121212";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        const v = c.state.value;
+        // visual indicator of clock state
+        ctx.fillStyle = v === LV.HIGH ? "#10b981" : "#333";
+        ctx.beginPath();
+        ctx.arc(c.x + c.w / 2, c.y + c.h / 2, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Label
+        ctx.fillStyle = "#e5e5e5";
+        ctx.font = "12px system-ui";
+        ctx.fillText("CLK", c.x + 12, c.y + 18);
+
+        // Draw pin
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        continue;
+      }
+
       // Draw logic gates with proper shapes
       const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR, KIND.NAND, KIND.NOR, KIND.XNOR].includes(c.kind);
 

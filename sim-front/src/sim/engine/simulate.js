@@ -37,7 +37,7 @@ export const simulate = (circuit) => {
 
   // Seed INPUT outputs from their state
   for (const c of circuit.components) {
-    if (c.kind === KIND.INPUT) {
+    if (c.kind === KIND.INPUT || c.kind === KIND.CLOCK) {
       const outPin = c.pins.find((p) => p.dir === "out");
       if (outPin) outPin.value = c.state.value;
     }
