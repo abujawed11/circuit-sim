@@ -77,9 +77,9 @@ const drawNotGate = (ctx, x, y, w, h) => {
   ctx.closePath();
 };
 
-const drawInverterBubble = (ctx, x, y) => {
+const drawInverterBubble = (ctx, x, y, radius = 5) => {
   ctx.beginPath();
-  ctx.arc(x, y, 5, 0, Math.PI * 2);
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 };
@@ -314,7 +314,7 @@ export default function Canvas({
         // Draw inverter bubble for NOT gate
         if (c.kind === KIND.NOT) {
           ctx.fillStyle = "#121212";
-          drawInverterBubble(ctx, gateX + gateW + 5, gateY + gateH / 2);
+          drawInverterBubble(ctx, gateX + gateW + 0, gateY + gateH / 2, 7);
         }
 
         // Draw gate label
@@ -1198,16 +1198,39 @@ function pinPosition(c, p) {
 
   if (isLogicGate) {
     if (p.dir === "out") {
-      // Output pin at right edge of gate shape
-      // For NOT gate, add extra space for inverter bubble
-      const extraOffset = c.kind === KIND.NOT ? 10 : 0;
-      return { x: c.x + c.w - 10 + extraOffset, y: c.y + c.h / 2 };
+      // Output pin - different offset for each gate type
+      let outputOffset = 0;
+
+      if (c.kind === KIND.AND) {
+        outputOffset = 20; // Distance from box edge to AND gate output pin
+      } else if (c.kind === KIND.OR) {
+        outputOffset = 1; // Distance from box edge to OR gate output pin
+      } else if (c.kind === KIND.XOR) {
+        outputOffset = 1; // Distance from box edge to XOR gate output pin
+      } else if (c.kind === KIND.NOT) {
+        outputOffset = -2; // Distance from box edge to NOT gate output pin (includes bubble)
+      }
+
+      return { x: c.x + c.w - outputOffset, y: c.y + c.h / 2 };
     } else {
-      // Input pins at left edge of gate shape
+      // Input pins - different offset for each gate type
       const ins = c.pins.filter((pp) => pp.dir === "in");
       const idx = ins.findIndex((pp) => pp.id === p.id);
       const gap = c.h / (ins.length + 1);
-      return { x: c.x + 10, y: c.y + gap * (idx + 1) };
+
+      let inputOffset = 0;
+
+      if (c.kind === KIND.AND) {
+        inputOffset = 0; // Distance from box edge to AND gate input pins
+      } else if (c.kind === KIND.OR) {
+        inputOffset = 5; // Distance from box edge to OR gate input pins (curved back)
+      } else if (c.kind === KIND.XOR) {
+        inputOffset = 0; // Distance from box edge to XOR gate input pins (curved back)
+      } else if (c.kind === KIND.NOT) {
+        inputOffset = 0; // Distance from box edge to NOT gate input pin
+      }
+
+      return { x: c.x + inputOffset, y: c.y + gap * (idx + 1) };
     }
   }
 
