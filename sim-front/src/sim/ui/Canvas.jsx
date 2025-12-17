@@ -54,6 +54,10 @@ export default function Canvas({
   const [menu, setMenu] = useState(null);
   const closeMenu = () => setMenu(null);
 
+  const dragMovedRef = React.useRef(false);
+  const suppressClickRef = React.useRef(false);
+  const dragStartRef = React.useRef({ x: 0, y: 0 });
+
   const draw = () => {
     const canvas = ref.current;
     if (!canvas) return;
@@ -89,6 +93,7 @@ export default function Canvas({
 
     // ---- wires (polyline) ----
     for (const w of circuit.wires) {
+
       const from = findPinPos(circuit, w.fromPinId);
       const to = findPinPos(circuit, w.toPinId);
       if (!from || !to) continue;
@@ -104,6 +109,9 @@ export default function Canvas({
       const pts = buildWirePolyline(from, to, w.points);
       drawPolyline(ctx, pts);
 
+
+
+
       if (isSel) {
         for (const p of pts) {
           ctx.fillStyle = "#FAD90E";
@@ -113,6 +121,8 @@ export default function Canvas({
         }
       }
     }
+
+
 
     // ---- preview draft ----
     if (draft) {
@@ -139,6 +149,39 @@ export default function Canvas({
     for (const c of circuit.components) {
       const isSel = c.id === selectedCompId;
 
+      // ✅ Special rendering for junction (NO box/title/pins)
+      if (c.kind === KIND.JUNCTION) {
+        const inputPin = c.pins.find((p) => p.name === "IN");
+        const v = inputPin?.value ?? LV.X;
+
+        const cx = c.x + c.w / 2;
+        const cy = c.y + c.h / 2;
+
+        // subtle glow
+        ctx.save();
+        ctx.globalAlpha = 0.18;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 16, 0, Math.PI * 2);
+        ctx.fillStyle = wireColorForValue(v);
+        ctx.fill();
+        ctx.restore();
+
+        // outer ring
+        ctx.beginPath();
+        ctx.arc(cx, cy, isSel ? 10 : 9, 0, Math.PI * 2);
+        ctx.strokeStyle = isSel ? "#FAD90E" : "rgba(255,255,255,0.25)";
+        ctx.lineWidth = isSel ? 3 : 2;
+        ctx.stroke();
+
+        // inner dot (matches wire value color)
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fillStyle = wireColorForValue(v);
+        ctx.fill();
+
+        continue;
+      }
+
       ctx.fillStyle = "#121212";
       ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
       ctx.lineWidth = isSel ? 3 : 2;
@@ -147,6 +190,7 @@ export default function Canvas({
       ctx.fill();
       ctx.stroke();
 
+      // title
       ctx.fillStyle = "#e5e5e5";
       ctx.font = "14px system-ui";
       ctx.fillText(c.kind, c.x + 12, c.y + 22);
@@ -203,6 +247,12 @@ export default function Canvas({
     setMouse(p);
 
     if (drag) {
+      const dx = p.x - dragStartRef.current.x;
+      const dy = p.y - dragStartRef.current.y;
+      if (dx * dx + dy * dy > 4) {
+        // 2px movement threshold
+        dragMovedRef.current = true;
+      }
       onMoveComponent(drag.compId, p.x - drag.dx, p.y - drag.dy);
     } else if (pointDrag) {
       const { wireId, pointIndex, dx, dy } = pointDrag;
@@ -215,9 +265,20 @@ export default function Canvas({
     }
   };
 
+  const getPinMeta = (pinId) => {
+    for (const c of circuit.components) {
+      const p = c.pins.find((pp) => pp.id === pinId);
+      if (p) return { comp: c, pin: p };
+    }
+    return null;
+  };
+
+
   const onMouseDown = (e) => {
     closeMenu();
     const { x, y } = toLocal(e);
+    dragMovedRef.current = false;
+    dragStartRef.current = { x, y };
 
     const hitPoint = hitTestWirePoint(circuit, x, y);
     if (hitPoint) {
@@ -229,6 +290,15 @@ export default function Canvas({
         e.preventDefault();
         return;
       }
+    }
+
+    const j = hitJunction(circuit, x, y);
+    if (j) {
+      setSelectedCompId(j.id);
+      setSelectedWireId(null);
+      setDrag({ compId: j.id, dx: x - j.x, dy: y - j.y });
+      e.preventDefault();
+      return;
     }
 
     const hitPin = hitTestPin(circuit, x, y);
@@ -254,19 +324,107 @@ export default function Canvas({
     }
   };
 
+
+  // const onMouseDown = (e) => {
+  //   closeMenu();
+  //   const { x, y } = toLocal(e);
+
+  //   const hitPoint = hitTestWirePoint(circuit, x, y);
+  //   if (hitPoint) {
+  //     const { wireId, pointIndex } = hitPoint;
+  //     const wire = circuit.wires.find((w) => w.id === wireId);
+  //     if (wire) {
+  //       const pt = wire.points[pointIndex];
+  //       setPointDrag({ wireId, pointIndex, dx: x - pt.x, dy: y - pt.y });
+  //       e.preventDefault();
+  //       return;
+  //     }
+  //   }
+
+  //   const hitPin = hitTestPin(circuit, x, y);
+  //   if (hitPin) return;
+
+  //   const hitW = hitTestWirePolyline(circuit, x, y);
+  //   if (hitW) {
+  //     setSelectedWireId(hitW.id);
+  //     setSelectedCompId(null);
+  //     e.preventDefault();
+  //     return;
+  //   }
+
+  //   const j = hitJunction(circuit, x, y);
+  //   if (j) {
+  //     setSelectedCompId(j.id);
+  //     setSelectedWireId(null);
+  //     setDrag({ compId: j.id, dx: x - j.x, dy: y - j.y });
+  //     e.preventDefault();
+  //     return;
+  //   }
+
+
+  //   const hitComp = hitComponent(circuit, x, y);
+  //   if (hitComp) {
+  //     setSelectedCompId(hitComp.id);
+  //     setSelectedWireId(null);
+  //     setDrag({ compId: hitComp.id, dx: x - hitComp.x, dy: y - hitComp.y });
+  //     e.preventDefault();
+  //   } else {
+  //     setSelectedCompId(null);
+  //     setSelectedWireId(null);
+  //   }
+  // };
+
   const onMouseUp = () => {
+    if (drag && dragMovedRef.current) {
+      suppressClickRef.current = true;
+    }
     setDrag(null);
     setWireDrag(null);
     setPointDrag(null);
   };
 
+
   const onClick = (e) => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    if (e.button === 2) return;
     closeMenu();
     const { x, y } = toLocal(e);
     const sx = snap(x);
     const sy = snap(y);
 
-    // 1) pin click (wiring start/finish)
+    // ✅ 0) Junction click handled FIRST (so it doesn't get confused by hitTestPin)
+    const j = hitJunction(circuit, x, y);
+    if (j) {
+      setSelectedCompId(j.id);
+      setSelectedWireId(null);
+
+      const jIn = j.pins[0].id;   // IN
+      const jOut = j.pins[1].id;  // OUT
+
+      if (!draft) {
+        // start from junction OUT
+        setDraft({ fromPinId: jOut, points: [] });
+      } else {
+        const start = getPinMeta(draft.fromPinId);
+        if (!start) {
+          setDraft(null);
+          return;
+        }
+
+        // If draft started from OUT => finish into junction IN
+        // If draft started from IN  => finish onto junction OUT (so connectPins can flip)
+        const targetPinId = start.pin.dir === "out" ? jIn : jOut;
+
+        onConnectPins(draft.fromPinId, targetPinId, draft.points);
+        setDraft(null);
+      }
+      return;
+    }
+
+    // 1) normal pin click
     const hitPin = hitTestPin(circuit, x, y);
     if (hitPin) {
       setSelectedCompId(hitPin.comp.id);
@@ -281,6 +439,7 @@ export default function Canvas({
       return;
     }
 
+    // (keep your existing wire-split draft logic)
     if (draft) {
       const hitW = hitTestWirePolyline(circuit, x, y);
       if (hitW) {
@@ -321,9 +480,99 @@ export default function Canvas({
     }
   };
 
+
+  // const onClick = (e) => {
+  //   closeMenu();
+  //   const { x, y } = toLocal(e);
+  //   const sx = snap(x);
+  //   const sy = snap(y);
+
+  //   // 1) pin click (wiring start/finish)
+  //   const hitPin = hitTestPin(circuit, x, y);
+  //   if (hitPin) {
+  //     setSelectedCompId(hitPin.comp.id);
+  //     setSelectedWireId(null);
+
+  //     if (!draft) {
+  //       setDraft({ fromPinId: hitPin.pin.id, points: [] });
+  //     } else {
+  //       onConnectPins(draft.fromPinId, hitPin.pin.id, draft.points);
+  //       setDraft(null);
+  //     }
+  //     return;
+  //   }
+
+  //   if (draft) {
+  //     const hitW = hitTestWirePolyline(circuit, x, y);
+  //     if (hitW) {
+  //       onSplitWire(hitW.id, { x: sx, y: sy });
+  //       const junction = circuit.components[circuit.components.length - 1];
+  //       onConnectPins(draft.fromPinId, junction.pins[0].id, draft.points);
+  //       setDraft(null);
+  //       return;
+  //     }
+  //   }
+
+  //   // 2) if drafting, clicking empty adds a route point
+  //   if (draft) {
+  //     setDraft((prev) => {
+  //       if (!prev) return prev;
+  //       const nextPoints = addOrthoPoint(circuit, prev.fromPinId, prev.points, {
+  //         x: sx,
+  //         y: sy,
+  //       });
+  //       return { ...prev, points: nextPoints };
+  //     });
+  //     return;
+  //   }
+
+  //   // 3) toggle input
+  //   const hitComp = hitComponent(circuit, x, y);
+  //   // ✅ Clicking junction acts like a node
+  //   if (hitComp?.kind === KIND.JUNCTION) {
+  //     setSelectedCompId(hitComp.id);
+  //     setSelectedWireId(null);
+
+  //     const inPinId = hitComp.pins[0].id;  // IN
+  //     const outPinId = hitComp.pins[1].id; // OUT
+
+  //     if (draft) {
+  //       // finish wire into junction IN
+  //       onConnectPins(draft.fromPinId, inPinId, draft.points);
+  //       setDraft(null);
+  //     } else {
+  //       // start wire from junction OUT
+  //       setDraft({ fromPinId: outPinId, points: [] });
+  //     }
+  //     return;
+  //   }
+
+  //   if (hitComp?.kind === KIND.INPUT) {
+  //     onToggleInput(hitComp.id);
+  //     return;
+  //   }
+
+  //   // 4) wire select
+  //   const hitW = hitTestWirePolyline(circuit, x, y);
+  //   if (hitW) {
+  //     setSelectedWireId(hitW.id);
+  //     setSelectedCompId(null);
+  //     return;
+  //   }
+  // };
+
   const onContextMenu = (e) => {
     e.preventDefault();
     const { x, y } = toLocal(e);
+
+    const j = hitJunction(circuit, x, y);
+    if (j) {
+      setSelectedCompId(j.id);
+      setSelectedWireId(null);
+      setMenu({ x, y, type: "comp", id: j.id, kind: j.kind });
+      return;
+    }
+
 
     const hitPoint = hitTestWirePoint(circuit, x, y);
     if (hitPoint) {
@@ -346,7 +595,7 @@ export default function Canvas({
     if (hitComp) {
       setSelectedCompId(hitComp.id);
       setSelectedWireId(null);
-      setMenu({ x, y, type: "comp", id: hitComp.id });
+      setMenu({ x, y, type: "comp", id: hitComp.id, kind: hitComp.kind });
       return;
     }
 
@@ -413,15 +662,17 @@ export default function Canvas({
         >
           {menu.type === "comp" && (
             <div className="min-w-44">
-              <button
-                className="w-full text-left px-3 py-2 hover:bg-neutral-800"
-                onClick={() => {
-                  onDuplicateComponent(menu.id);
-                  closeMenu();
-                }}
-              >
-                Duplicate
-              </button>
+              {menu.kind !== KIND.JUNCTION && (
+                <button
+                  className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                  onClick={() => {
+                    onDuplicateComponent(menu.id);
+                    closeMenu();
+                  }}
+                >
+                  Duplicate
+                </button>
+              )}
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
                 onClick={() => {
@@ -429,7 +680,8 @@ export default function Canvas({
                   closeMenu();
                 }}
               >
-                Delete
+                {menu.kind === KIND.JUNCTION ? "Delete junction" : "Delete"}
+
               </button>
             </div>
           )}
@@ -444,12 +696,11 @@ export default function Canvas({
                     const from = findPinPos(circuit, wire.fromPinId);
                     const to = findPinPos(circuit, wire.toPinId);
                     const pts = buildWirePolyline(from, to, wire.points);
-                    const { pt } = closestPointOnPolyline(
-                      { x: menu.x, y: menu.y },
-                      pts
-                    );
+                    const { pt } = closestPointOnPolyline({ x: menu.x, y: menu.y }, pts);
+
+                    const snapped = { x: snap(pt.x), y: snap(pt.y) };
                     const newPoints = [...(wire.points || [])];
-                    newPoints.push(pt);
+                    newPoints.push(snapped);
                     onUpdateWire(wire.id, newPoints);
                   }
                   closeMenu();
@@ -457,19 +708,29 @@ export default function Canvas({
               >
                 Add point
               </button>
+
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800"
                 onClick={() => {
-                  const newPinId = onSplitWireAndStartDraft(menu.id, {
-                    x: menu.x,
-                    y: menu.y,
-                  });
+                  const wire = circuit.wires.find((w) => w.id === menu.id);
+                  if (!wire) return;
+
+                  // ✅ use closest point ON the wire, not where user clicked near it
+                  const from = findPinPos(circuit, wire.fromPinId);
+                  const to = findPinPos(circuit, wire.toPinId);
+                  const pts = buildWirePolyline(from, to, wire.points);
+                  const { pt } = closestPointOnPolyline({ x: menu.x, y: menu.y }, pts);
+
+                  const snapped = { x: snap(pt.x), y: snap(pt.y) };
+                  const newPinId = onSplitWireAndStartDraft(menu.id, snapped);
+
                   setDraft({ fromPinId: newPinId, points: [] });
                   closeMenu();
                 }}
               >
                 Connect from here
               </button>
+
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
                 onClick={() => {
@@ -487,13 +748,17 @@ export default function Canvas({
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800"
                 onClick={() => {
-                  const newPinId = onSplitWireAndStartDraft(menu.wireId, menu);
+                  const newPinId = onSplitWireAndStartDraft(menu.wireId, {
+                    x: snap(menu.x),
+                    y: snap(menu.y),
+                  });
                   setDraft({ fromPinId: newPinId, points: [] });
                   closeMenu();
                 }}
               >
                 Connect from here
               </button>
+
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"
                 onClick={() => {
@@ -512,16 +777,32 @@ export default function Canvas({
             </div>
           )}
 
-          {menu.type === "blank" && (
+          {/* {menu.type === "blank" && (
             <div className="min-w-44">
               <div className="px-3 py-2 text-neutral-400">No actions</div>
             </div>
+          )} */}
+
+          {menu.type === "blank" && (
+            <div className="min-w-44">
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                onClick={() => {
+                  onPlace(snap(menu.x) - 12, snap(menu.y) - 12, KIND.JUNCTION);
+                  closeMenu();
+                }}
+              >
+                Add junction here
+              </button>
+            </div>
           )}
+
         </div>
       )}
     </div>
   );
 }
+
 function findPin(circuit, pinId) {
   for (const c of circuit.components) {
     const p = c.pins.find((pp) => pp.id === pinId);
@@ -539,12 +820,9 @@ function hitComponent(circuit, x, y) {
 
 function buildWirePolyline(from, to, points) {
   const mid = Array.isArray(points) ? points : [];
-  // If old wires exist without points, this still works
   return [from, ...mid, to];
 }
 
-// For draft we want ortho segments (Manhattan). We enforce it when adding points,
-// but also ensure the preview from last point to mouse is ortho.
 function buildDraftPolyline(from, points, end) {
   const pts = [from, ...(points || [])];
   const last = pts[pts.length - 1];
@@ -552,8 +830,6 @@ function buildDraftPolyline(from, points, end) {
   return [...pts, ...orthoEndPts.slice(1)];
 }
 
-// Enforce orthogonal routing: if click point isn't aligned with last,
-// insert an intermediate point so segments stay horizontal/vertical.
 function addOrthoPoint(circuit, fromPinId, points, clicked) {
   const from = findPinPos(circuit, fromPinId);
   if (!from) return points;
@@ -561,12 +837,9 @@ function addOrthoPoint(circuit, fromPinId, points, clicked) {
   const current = [from, ...(points || [])];
   const last = current[current.length - 1];
 
-  const seg = orthoSegment(last, clicked); // [last, mid?, clicked]
-  // We only store intermediate points (excluding "last")
-  // seg includes last as [0], so take from index 1 onward.
+  const seg = orthoSegment(last, clicked);
   const newPts = seg.slice(1);
 
-  // Prevent adding duplicate last point
   const out = [...(points || [])];
   for (const p of newPts) {
     const prev = out[out.length - 1];
@@ -575,10 +848,8 @@ function addOrthoPoint(circuit, fromPinId, points, clicked) {
   return out;
 }
 
-// Returns a Manhattan segment path from a->b: [a, (b.x,a.y) , b] OR [a, b] if aligned
 function orthoSegment(a, b) {
   if (a.x === b.x || a.y === b.y) return [a, b];
-  // horizontal then vertical (can swap later if you want)
   return [a, { x: b.x, y: a.y }, b];
 }
 
@@ -590,7 +861,6 @@ function drawPolyline(ctx, pts) {
   ctx.stroke();
 }
 
-// --- wire hit test for stored polylines ---
 function hitTestWirePolyline(circuit, x, y) {
   for (let i = circuit.wires.length - 1; i >= 0; i--) {
     const w = circuit.wires[i];
@@ -633,9 +903,7 @@ function closestPointOnPolyline(p, pts) {
     const ab2 = abx * abx + aby * aby;
     if (ab2 === 0) {
       const d = Math.hypot(apx, apy);
-      if (d < best.d) {
-        best = { t: i, pt: a, d };
-      }
+      if (d < best.d) best = { t: i, pt: a, d };
       continue;
     }
 
@@ -646,9 +914,7 @@ function closestPointOnPolyline(p, pts) {
     const cy = a.y + t * aby;
     const d = Math.hypot(p.x - cx, p.y - cy);
 
-    if (d < best.d) {
-      best = { t: i + t, pt: { x: cx, y: cy }, d };
-    }
+    if (d < best.d) best = { t: i + t, pt: { x: cx, y: cy }, d };
   }
   return best;
 }
@@ -689,12 +955,31 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function pinPosition(c, p) {
+  // ✅ Junction pins meet exactly at the node center
+  if (c.kind === KIND.JUNCTION) {
+    return { x: c.x + c.w / 2, y: c.y + c.h / 2 };
+  }
+
   if (p.dir === "out") return { x: c.x + c.w, y: c.y + c.h / 2 };
 
   const ins = c.pins.filter((pp) => pp.dir === "in");
   const idx = ins.findIndex((pp) => pp.id === p.id);
   const gap = c.h / (ins.length + 1);
   return { x: c.x, y: c.y + gap * (idx + 1) };
+}
+
+
+function hitJunction(circuit, x, y) {
+  for (let i = circuit.components.length - 1; i >= 0; i--) {
+    const c = circuit.components[i];
+    if (c.kind !== KIND.JUNCTION) continue;
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    const dx = x - cx;
+    const dy = y - cy;
+    if (dx * dx + dy * dy <= 14 * 14) return c; // 14px radius hit area
+  }
+  return null;
 }
 
 function findPinPos(circuit, pinId) {
@@ -706,7 +991,6 @@ function findPinPos(circuit, pinId) {
   return null;
 }
 
-// NEW: hit test pins by distance
 function hitTestPin(circuit, x, y) {
   for (const c of circuit.components) {
     for (const p of c.pins) {
@@ -720,3 +1004,6 @@ function hitTestPin(circuit, x, y) {
   }
   return null;
 }
+
+
+
