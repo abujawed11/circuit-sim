@@ -260,7 +260,8 @@ export default function Canvas({
       const wire = circuit.wires.find((w) => w.id === wireId);
       if (wire) {
         const newPoints = [...(wire.points || [])];
-        newPoints[pointIndex] = { x: snap(p.x - dx), y: snap(p.y - dy) };
+        // Use raw position for smooth dragging (snap on mouse up)
+        newPoints[pointIndex] = { x: p.x - dx, y: p.y - dy };
         onUpdateWire(wireId, newPoints);
       }
     }
@@ -375,10 +376,23 @@ export default function Canvas({
   //   }
   // };
 
-  const onMouseUp = () => {
+  const onMouseUp = (e) => {
     if (drag && dragMovedRef.current) {
       suppressClickRef.current = true;
     }
+
+    // Snap wire point to grid when drag ends
+    if (pointDrag) {
+      const p = toLocal(e);
+      const { wireId, pointIndex, dx, dy } = pointDrag;
+      const wire = circuit.wires.find((w) => w.id === wireId);
+      if (wire) {
+        const newPoints = [...(wire.points || [])];
+        newPoints[pointIndex] = { x: snap(p.x - dx), y: snap(p.y - dy) };
+        onUpdateWire(wireId, newPoints);
+      }
+    }
+
     setDrag(null);
     setWireDrag(null);
     setPointDrag(null);
