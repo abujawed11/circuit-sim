@@ -33,6 +33,7 @@ export default function Canvas({
   onDeleteComponent,
   onDuplicateComponent,
   onDeleteWire,
+  onDeleteMultiple,
   onUpdateWire,
   onSplitWire,
   onSplitWireAndStartDraft,
@@ -47,6 +48,10 @@ export default function Canvas({
 
   const [selectedCompId, setSelectedCompId] = useState(null);
   const [selectedWireId, setSelectedWireId] = useState(null);
+
+  // Multi-select state
+  const [selectedCompIds, setSelectedCompIds] = useState([]); // Array of component IDs
+  const [selectedWireIds, setSelectedWireIds] = useState([]); // Array of wire IDs
 
   const [drag, setDrag] = useState(null); // { compId, dx, dy }
   const [wireDrag, setWireDrag] = useState(null); // { wireId, dx, dy }
@@ -103,7 +108,7 @@ export default function Canvas({
       const to = findPinPos(circuit, w.toPinId);
       if (!from || !to) continue;
 
-      const isSel = w.id === selectedWireId;
+      const isSel = w.id === selectedWireId || selectedWireIds.includes(w.id);
 
       const fromPin = findPin(circuit, w.fromPinId);
       const v = fromPin?.pin?.value ?? LV.X;
@@ -153,7 +158,7 @@ export default function Canvas({
 
     // ---- components ----
     for (const c of circuit.components) {
-      const isSel = c.id === selectedCompId;
+      const isSel = c.id === selectedCompId || selectedCompIds.includes(c.id);
 
       // ✅ Special rendering for junction (NO box/title/pins)
       if (c.kind === KIND.JUNCTION) {
@@ -288,13 +293,24 @@ export default function Canvas({
       }
     }
 
+    // Status text at bottom
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.font = "12px system-ui";
-    ctx.fillText(
-      "Draft wire: click empty to add point • Backspace removes last point • Click IN pin to finish",
-      14,
-      rect.height - 14
-    );
+
+    const totalSelected = selectedCompIds.length + selectedWireIds.length;
+    if (totalSelected > 0) {
+      const compText = selectedCompIds.length > 0 ? `${selectedCompIds.length} component${selectedCompIds.length > 1 ? 's' : ''}` : '';
+      const wireText = selectedWireIds.length > 0 ? `${selectedWireIds.length} wire${selectedWireIds.length > 1 ? 's' : ''}` : '';
+      const parts = [compText, wireText].filter(Boolean);
+      const statusText = `${parts.join(' and ')} selected • Press Delete to remove • Ctrl+A to select all`;
+      ctx.fillText(statusText, 14, rect.height - 14);
+    } else {
+      ctx.fillText(
+        "Draft wire: click empty to add point • Backspace removes last point • Click IN pin to finish",
+        14,
+        rect.height - 14
+      );
+    }
   };
 
   React.useEffect(() => {
@@ -403,6 +419,9 @@ export default function Canvas({
     dragMovedRef.current = false;
     dragStartRef.current = { x, y };
 
+    const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+    const isShift = e.shiftKey;
+
     const hitPoint = hitTestWirePoint(circuit, x, y);
     if (hitPoint) {
       const { wireId, pointIndex } = hitPoint;
@@ -417,9 +436,21 @@ export default function Canvas({
 
     const j = hitJunction(circuit, x, y);
     if (j) {
-      setSelectedCompId(j.id);
-      setSelectedWireId(null);
-      setDrag({ compId: j.id, dx: x - j.x, dy: y - j.y });
+      if (isCtrlOrCmd || isShift) {
+        // Multi-select: toggle component in selection
+        if (selectedCompIds.includes(j.id)) {
+          setSelectedCompIds(selectedCompIds.filter(id => id !== j.id));
+        } else {
+          setSelectedCompIds([...selectedCompIds, j.id]);
+        }
+      } else {
+        // Single select
+        setSelectedCompId(j.id);
+        setSelectedWireId(null);
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
+        setDrag({ compId: j.id, dx: x - j.x, dy: y - j.y });
+      }
       e.preventDefault();
       return;
     }
@@ -429,21 +460,48 @@ export default function Canvas({
 
     const hitW = hitTestWirePolyline(circuit, x, y);
     if (hitW) {
-      setSelectedWireId(hitW.id);
-      setSelectedCompId(null);
+      if (isCtrlOrCmd || isShift) {
+        // Multi-select: toggle wire in selection
+        if (selectedWireIds.includes(hitW.id)) {
+          setSelectedWireIds(selectedWireIds.filter(id => id !== hitW.id));
+        } else {
+          setSelectedWireIds([...selectedWireIds, hitW.id]);
+        }
+      } else {
+        // Single select
+        setSelectedWireId(hitW.id);
+        setSelectedCompId(null);
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
+      }
       e.preventDefault();
       return;
     }
 
     const hitComp = hitComponent(circuit, x, y);
     if (hitComp) {
-      setSelectedCompId(hitComp.id);
-      setSelectedWireId(null);
-      setDrag({ compId: hitComp.id, dx: x - hitComp.x, dy: y - hitComp.y });
+      if (isCtrlOrCmd || isShift) {
+        // Multi-select: toggle component in selection
+        if (selectedCompIds.includes(hitComp.id)) {
+          setSelectedCompIds(selectedCompIds.filter(id => id !== hitComp.id));
+        } else {
+          setSelectedCompIds([...selectedCompIds, hitComp.id]);
+        }
+      } else {
+        // Single select
+        setSelectedCompId(hitComp.id);
+        setSelectedWireId(null);
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
+        setDrag({ compId: hitComp.id, dx: x - hitComp.x, dy: y - hitComp.y });
+      }
       e.preventDefault();
     } else {
+      // Clicked on empty space - clear all selections
       setSelectedCompId(null);
       setSelectedWireId(null);
+      setSelectedCompIds([]);
+      setSelectedWireIds([]);
     }
   };
 
@@ -502,6 +560,9 @@ export default function Canvas({
       if (!draft) {
         // start from junction OUT
         setDraft({ fromPinId: jOut, points: [] });
+        // Clear multi-select when starting wire draft
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
       } else {
         const start = getPinMeta(draft.fromPinId);
         if (!start) {
@@ -527,6 +588,9 @@ export default function Canvas({
 
       if (!draft) {
         setDraft({ fromPinId: hitPin.pin.id, points: [] });
+        // Clear multi-select when starting wire draft
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
       } else {
         tryConnectPins(draft.fromPinId, hitPin.pin.id, draft.points);
         setDraft(null);
@@ -621,13 +685,30 @@ export default function Canvas({
     setMenu({ x, y, type: "blank", id: null });
   };
 
-  // keyboard: delete, cancel, undo point
+  // keyboard: delete, cancel, undo point, select all
   React.useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
         setDraft(null);
         setDrag(null);
         closeMenu();
+        // Clear multi-select on Escape
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
+        return;
+      }
+
+      // Ctrl+A / Cmd+A: Select all
+      if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+        e.preventDefault();
+        if (!draft) {
+          const allCompIds = circuit.components.map(c => c.id);
+          const allWireIds = circuit.wires.map(w => w.id);
+          setSelectedCompIds(allCompIds);
+          setSelectedWireIds(allWireIds);
+          setSelectedCompId(null);
+          setSelectedWireId(null);
+        }
         return;
       }
 
@@ -642,16 +723,31 @@ export default function Canvas({
         return;
       }
 
-      // not drafting: delete selection
+      // not drafting: delete selection (single or multiple)
       if (!draft && (e.key === "Backspace" || e.key === "Delete")) {
-        if (selectedWireId) {
-          onDeleteWire(selectedWireId);
-          setSelectedWireId(null);
-          return;
+        e.preventDefault();
+
+        // Combine single selection with multi-selection
+        const allCompIds = [...selectedCompIds];
+        const allWireIds = [...selectedWireIds];
+
+        // Add single selections if they exist and aren't already in arrays
+        if (selectedCompId && !allCompIds.includes(selectedCompId)) {
+          allCompIds.push(selectedCompId);
         }
-        if (selectedCompId) {
-          onDeleteComponent(selectedCompId);
+        if (selectedWireId && !allWireIds.includes(selectedWireId)) {
+          allWireIds.push(selectedWireId);
+        }
+
+        // Delete if there's anything selected
+        if (allCompIds.length > 0 || allWireIds.length > 0) {
+          onDeleteMultiple(allCompIds, allWireIds);
+
+          // Clear all selections
+          setSelectedCompIds([]);
+          setSelectedWireIds([]);
           setSelectedCompId(null);
+          setSelectedWireId(null);
           return;
         }
       }
@@ -659,7 +755,7 @@ export default function Canvas({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [draft, selectedCompId, selectedWireId, onDeleteComponent, onDeleteWire]);
+  }, [draft, selectedCompId, selectedWireId, selectedCompIds, selectedWireIds, onDeleteComponent, onDeleteWire, onDeleteMultiple, circuit]);
 
   return (
     <div className="w-full h-full relative">

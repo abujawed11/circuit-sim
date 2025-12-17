@@ -84,6 +84,31 @@ export default function Editor() {
         updateCircuit(next);
     };
 
+    const deleteMultiple = (compIds = [], wireIds = []) => {
+        const next = structuredClone(circuit);
+
+        // Collect all pin IDs from components to be deleted
+        const pinIdsToDelete = new Set();
+        compIds.forEach(compId => {
+            const comp = next.components.find(c => c.id === compId);
+            if (comp) {
+                comp.pins.forEach(p => pinIdsToDelete.add(p.id));
+            }
+        });
+
+        // Delete components
+        next.components = next.components.filter(c => !compIds.includes(c.id));
+
+        // Delete wires (both explicitly selected and connected to deleted components)
+        next.wires = next.wires.filter(w =>
+            !wireIds.includes(w.id) &&
+            !pinIdsToDelete.has(w.fromPinId) &&
+            !pinIdsToDelete.has(w.toPinId)
+        );
+
+        updateCircuit(next);
+    };
+
     const addAt = (x, y, kind) => {
         const next = structuredClone(circuit);
         next.components.push(makeComponent(kind, x, y));
@@ -273,6 +298,7 @@ const connectPins = (aPinId, bPinId, points = []) => {
                     onDeleteComponent={deleteComponent}
                     onDuplicateComponent={duplicateComponent}
                     onDeleteWire={deleteWire}
+                    onDeleteMultiple={deleteMultiple}
                     onUpdateWire={onUpdateWire}
                     onSplitWire={onSplitWire}
                     onSplitWireAndStartDraft={onSplitWireAndStartDraft}
