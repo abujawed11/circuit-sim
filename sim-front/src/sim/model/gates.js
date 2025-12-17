@@ -29,6 +29,33 @@ export const makeComponent = (kind, x, y) => {
         pins: [pin("OUT", "out")],
       };
 
+    case KIND.BUTTON:
+      return {
+        ...base,
+        w: 110,
+        h: 60,
+        state: { pressed: false },
+        pins: [pin("OUT", "out")],
+      };
+
+    case KIND.VCC:
+      return {
+        ...base,
+        w: 60,
+        h: 60,
+        state: { value: LV.HIGH },
+        pins: [pin("OUT", "out")],
+      };
+
+    case KIND.GND:
+      return {
+        ...base,
+        w: 60,
+        h: 60,
+        state: { value: LV.LOW },
+        pins: [pin("OUT", "out")],
+      };
+
     case KIND.LED:
       return {
         ...base,

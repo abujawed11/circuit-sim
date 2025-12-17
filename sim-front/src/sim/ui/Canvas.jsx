@@ -99,6 +99,7 @@ export default function Canvas({
   onSplitWireAndStartDraft,
   onToggleClockMode,
   onSetComponentValue,
+  onSetButtonPressed
 }) {
   const ref = useRef(null);
 
@@ -119,6 +120,7 @@ export default function Canvas({
   const [wireDrag, setWireDrag] = useState(null); // { wireId, dx, dy }
   const [pointDrag, setPointDrag] = useState(null); // { wireId, pointIndex, dx, dy }
   const [activeClockId, setActiveClockId] = useState(null);
+  const [activeButtonId, setActiveButtonId] = useState(null);
   const [menu, setMenu] = useState(null);
   const closeMenu = () => setMenu(null);
 
@@ -330,7 +332,7 @@ export default function Canvas({
 
         const v = c.state.value;
         const mode = c.state.mode || "AUTO";
-        
+
         // visual indicator of clock state
         ctx.fillStyle = v === LV.HIGH ? "#10b981" : "#333";
         ctx.beginPath();
@@ -343,8 +345,8 @@ export default function Canvas({
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(mode === "AUTO" ? "A" : "M", c.x + c.w / 2, c.y + c.h / 2 + 1);
-        
-        ctx.textAlign = "left"; 
+
+        ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
 
         // Label
@@ -486,6 +488,63 @@ export default function Canvas({
           ctx.beginPath();
           ctx.arc(c.x + c.w - 18, c.y + 18, 8, 0, Math.PI * 2);
           ctx.fill();
+        }
+
+        if (c.kind === KIND.BUTTON) {
+          // const isPressed = c.state.value === LV.HIGH;
+          const isPressed = !!c.state.pressed;
+
+          ctx.fillStyle = isPressed ? "#10b981" : "#666";
+          ctx.beginPath();
+          ctx.arc(c.x + c.w - 18, c.y + 18, 8, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Show pressed state
+          ctx.fillStyle = isPressed ? "#10b981" : "#777";
+          ctx.font = "12px system-ui";
+          ctx.fillText(
+            isPressed ? "PRESSED" : "RELEASED",
+            c.x + 12,
+            c.y + c.h - 12
+          );
+        }
+
+        if (c.kind === KIND.VCC) {
+          ctx.fillStyle = "#ef4444"; // Red for VCC
+          ctx.font = "bold 20px system-ui";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("VCC", c.x + c.w / 2, c.y + c.h / 2);
+          ctx.textAlign = "left";
+          ctx.textBaseline = "alphabetic";
+        }
+
+        if (c.kind === KIND.GND) {
+          // Draw GND symbol (three horizontal lines)
+          ctx.strokeStyle = "#888";
+          ctx.lineWidth = 2;
+          const centerX = c.x + c.w / 2;
+          const centerY = c.y + c.h / 2;
+
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY - 10);
+          ctx.lineTo(centerX, centerY + 5);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(centerX - 12, centerY + 5);
+          ctx.lineTo(centerX + 12, centerY + 5);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(centerX - 8, centerY + 10);
+          ctx.lineTo(centerX + 8, centerY + 10);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(centerX - 4, centerY + 15);
+          ctx.lineTo(centerX + 4, centerY + 15);
+          ctx.stroke();
         }
 
         if (c.kind === KIND.LED) {
@@ -728,8 +787,17 @@ export default function Canvas({
       // Handle manual clock pulse (set HIGH on mouse down, will reset on mouse up if no drag)
       if (hitComp.kind === KIND.CLOCK && hitComp.state.mode === "MANUAL") {
         onSetComponentValue(hitComp.id, LV.HIGH);
+        // onSetButtonPressed(hitComp.id, true);
         setActiveClockId(hitComp.id);
         // Don't return - allow dragging to work!
+      }
+
+      if (hitComp.kind === KIND.BUTTON) {
+        // onSetComponentValue(hitComp.id, LV.HIGH);
+        // onSetButtonPressed(hitComp.id, false);
+        onSetButtonPressed(hitComp.id, true);
+
+        setActiveButtonId(hitComp.id);
       }
 
       if (isCtrlOrCmd || isShift) {
@@ -766,8 +834,18 @@ export default function Canvas({
     // - If dragged: Reset clock to LOW so it doesn't stay HIGH
     if (activeClockId) {
       onSetComponentValue(activeClockId, LV.LOW);
+      setActiveClockId(null);
     }
-    setActiveClockId(null);
+
+    // if (activeButtonId) {
+    //   onSetComponentValue(activeButtonId, LV.LOW);
+    //   setActiveButtonId(null);
+    // }
+    if (activeButtonId) {
+      onSetButtonPressed(activeButtonId, false);
+      setActiveButtonId(null);
+    }
+
 
     // Add component move to history when drag ends
     if (drag && dragMovedRef.current) {

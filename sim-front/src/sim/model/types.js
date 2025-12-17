@@ -11,6 +11,9 @@ export const LV = {
 // Component kinds
 export const KIND = {
   INPUT: "INPUT",
+  BUTTON: "BUTTON",
+  VCC: "VCC",
+  GND: "GND",
   LED: "LED",
   AND: "AND",
   OR: "OR",

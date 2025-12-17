@@ -6,7 +6,12 @@ import { simulate } from "../engine/simulate";
 
 const palette = [
     { kind: KIND.INPUT, label: "Input" },
+    { kind: KIND.BUTTON, label: "Button" },
+    { kind: KIND.VCC, label: "VCC" },
+    { kind: KIND.GND, label: "GND" },
     { kind: KIND.LED, label: "LED" },
+    { kind: KIND.PROBE, label: "Probe" },
+    { kind: KIND.CLOCK, label: "Clock" },
     { kind: KIND.NOT, label: "NOT" },
     { kind: KIND.AND, label: "AND" },
     { kind: KIND.OR, label: "OR" },
@@ -14,8 +19,6 @@ const palette = [
     { kind: KIND.NAND, label: "NAND" },
     { kind: KIND.NOR, label: "NOR" },
     { kind: KIND.XNOR, label: "XNOR" },
-    { kind: KIND.PROBE, label: "Probe" },
-    { kind: KIND.CLOCK, label: "Clock" },
     { kind: KIND.SR_LATCH, label: "SR Latch" },
     { kind: KIND.D_FF, label: "D Flip-Flop" },
     { kind: KIND.JK_FF, label: "JK Flip-Flop" },
@@ -36,6 +39,9 @@ export default function Editor() {
                 title: "I/O",
                 items: [
                     { kind: KIND.INPUT, label: "Input", short: "IN", hint: "Toggle 0/1" },
+                    { kind: KIND.BUTTON, label: "Button", short: "BTN", hint: "Momentary press" },
+                    { kind: KIND.VCC, label: "VCC", short: "1", hint: "Always HIGH" },
+                    { kind: KIND.GND, label: "GND", short: "0", hint: "Always LOW" },
                     { kind: KIND.LED, label: "LED", short: "OUT", hint: "Shows signal" },
                     { kind: KIND.PROBE, label: "Probe", short: "DBG", hint: "0/1/X read" },
                     { kind: KIND.JUNCTION, label: "Junction", short: "NET", hint: "Split wire" },
@@ -270,6 +276,17 @@ export default function Editor() {
         });
     };
 
+    const setButtonPressed = (compId, pressed) => {
+        setCircuit((prev) => {
+            const next = structuredClone(prev);
+            const c = next.components.find((cc) => cc.id === compId);
+            if (c && c.kind === KIND.BUTTON) {
+                c.state.pressed = pressed;
+            }
+            return next;
+        });
+    };
+
     const toggleClockMode = (compId) => {
         const next = structuredClone(circuit);
         const c = next.components.find((cc) => cc.id === compId);
@@ -314,9 +331,8 @@ export default function Editor() {
             return;
         }
 
-        // one wire per input (single driver)
-        next.wires = next.wires.filter((w) => w.toPinId !== toPinId);
-
+        // Allow multiple wires to same input (like other simulators)
+        // Conflicts will be handled in simulation logic
         const exists = next.wires.some(
             (w) => w.fromPinId === fromPinId && w.toPinId === toPinId
         );
@@ -581,6 +597,7 @@ export default function Editor() {
                     onSplitWireAndStartDraft={onSplitWireAndStartDraft}
                     onToggleClockMode={toggleClockMode}
                     onSetComponentValue={setComponentValue}
+                    onSetButtonPressed={setButtonPressed}
                 />
             </div>
         </div>

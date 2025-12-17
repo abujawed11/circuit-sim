@@ -35,11 +35,15 @@ export const simulate = (circuit) => {
     for (const p of c.pins) p.value = LV.X;
   }
 
-  // Seed INPUT outputs from their state
+  // Seed INPUT, BUTTON, VCC, GND, CLOCK outputs from their state
   for (const c of circuit.components) {
-    if (c.kind === KIND.INPUT || c.kind === KIND.CLOCK) {
+    if (c.kind === KIND.INPUT || c.kind === KIND.CLOCK || c.kind === KIND.VCC || c.kind === KIND.GND) {
       const outPin = c.pins.find((p) => p.dir === "out");
       if (outPin) outPin.value = c.state.value;
+    }
+    if (c.kind === KIND.BUTTON) {
+      const outPin = c.pins.find((p) => p.dir === "out");
+      if (outPin) outPin.value = c.state.pressed ? LV.HIGH : LV.LOW;
     }
     // Seed Flip-Flops/Latches from internal state
     if (
@@ -60,14 +64,47 @@ export const simulate = (circuit) => {
     let changed = false;
 
     // Drive inputs via wires (output -> input)
+    // Group wires by target pin to handle multiple drivers
+    const wiresByTarget = new Map();
     for (const w of circuit.wires) {
-      const from = getPin(circuit, w.fromPinId);
-      const to = getPin(circuit, w.toPinId);
-      if (!from || !to) continue;
+      if (!wiresByTarget.has(w.toPinId)) {
+        wiresByTarget.set(w.toPinId, []);
+      }
+      wiresByTarget.get(w.toPinId).push(w);
+    }
 
-      const v = from.pin.value;
-      if (to.pin.value !== v) {
-        to.pin.value = v;
+    // Apply wire values, handling conflicts
+    for (const [toPinId, wires] of wiresByTarget) {
+      const to = getPin(circuit, toPinId);
+      if (!to) continue;
+
+      // Collect all driver values
+      const driverValues = wires
+        .map(w => getPin(circuit, w.fromPinId))
+        .filter(Boolean)
+        .map(from => from.pin.value);
+
+      if (driverValues.length === 0) continue;
+
+      // Resolve multiple drivers
+      let resolvedValue;
+      if (driverValues.length === 1) {
+        resolvedValue = driverValues[0];
+      } else {
+        // Check if all drivers agree
+        const firstValue = driverValues[0];
+        const allAgree = driverValues.every(v => v === firstValue || v === LV.X);
+
+        if (allAgree && firstValue !== LV.X) {
+          resolvedValue = firstValue; // All agree on HIGH or LOW
+        } else {
+          // Conflict: different values driving the same pin
+          resolvedValue = LV.X; // Show as undefined
+        }
+      }
+
+      if (to.pin.value !== resolvedValue) {
+        to.pin.value = resolvedValue;
         changed = true;
       }
     }
