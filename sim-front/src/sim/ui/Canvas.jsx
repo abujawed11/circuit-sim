@@ -132,7 +132,8 @@ export default function Canvas({
         ctx.lineWidth = 3;
         ctx.setLineDash([6, 6]);
 
-        const previewEnd = { x: snap(mouse.x), y: snap(mouse.y) };
+        // Use raw mouse position for smooth preview (snap only when clicking)
+        const previewEnd = { x: mouse.x, y: mouse.y };
         const pts = buildDraftPolyline(from, draft.points, previewEnd);
         drawPolyline(ctx, pts);
 
@@ -832,26 +833,23 @@ function buildWirePolyline(from, to, points) {
 
 function buildDraftPolyline(from, points, end) {
   const pts = [from, ...(points || [])];
-  const last = pts[pts.length - 1];
-  const orthoEndPts = orthoSegment(last, end);
-  return [...pts, ...orthoEndPts.slice(1)];
+  // Draw straight line from last point to mouse cursor
+  return [...pts, end];
 }
 
 function addOrthoPoint(circuit, fromPinId, points, clicked) {
   const from = findPinPos(circuit, fromPinId);
   if (!from) return points;
 
-  const current = [from, ...(points || [])];
-  const last = current[current.length - 1];
-
-  const seg = orthoSegment(last, clicked);
-  const newPts = seg.slice(1);
-
+  // Just add the clicked point directly (no L-shape routing)
   const out = [...(points || [])];
-  for (const p of newPts) {
-    const prev = out[out.length - 1];
-    if (!prev || prev.x !== p.x || prev.y !== p.y) out.push(p);
+  const prev = out[out.length - 1];
+
+  // Only add if it's not a duplicate of the last point
+  if (!prev || prev.x !== clicked.x || prev.y !== clicked.y) {
+    out.push(clicked);
   }
+
   return out;
 }
 
