@@ -97,6 +97,8 @@ export default function Canvas({
   onUpdateWire,
   onSplitWire,
   onSplitWireAndStartDraft,
+  onToggleClockMode,
+  onSetComponentValue,
 }) {
   const ref = useRef(null);
 
@@ -116,6 +118,7 @@ export default function Canvas({
   const [drag, setDrag] = useState(null); // { compId, dx, dy }
   const [wireDrag, setWireDrag] = useState(null); // { wireId, dx, dy }
   const [pointDrag, setPointDrag] = useState(null); // { wireId, pointIndex, dx, dy }
+  const [activeClockId, setActiveClockId] = useState(null);
   const [menu, setMenu] = useState(null);
   const closeMenu = () => setMenu(null);
 
@@ -326,11 +329,23 @@ export default function Canvas({
         ctx.stroke();
 
         const v = c.state.value;
+        const mode = c.state.mode || "AUTO";
+        
         // visual indicator of clock state
         ctx.fillStyle = v === LV.HIGH ? "#10b981" : "#333";
         ctx.beginPath();
-        ctx.arc(c.x + c.w / 2, c.y + c.h / 2, 10, 0, Math.PI * 2);
+        ctx.arc(c.x + c.w / 2, c.y + c.h / 2, 14, 0, Math.PI * 2);
         ctx.fill();
+
+        // Mode indicator text
+        ctx.fillStyle = v === LV.HIGH ? "#000" : "#888";
+        ctx.font = "bold 14px system-ui";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(mode === "AUTO" ? "A" : "M", c.x + c.w / 2, c.y + c.h / 2 + 1);
+        
+        ctx.textAlign = "left"; 
+        ctx.textBaseline = "alphabetic";
 
         // Label
         ctx.fillStyle = "#e5e5e5";
@@ -649,6 +664,13 @@ export default function Canvas({
 
     const hitComp = hitComponent(circuit, x, y);
     if (hitComp) {
+      if (hitComp.kind === KIND.CLOCK && hitComp.state.mode === "MANUAL") {
+        onSetComponentValue(hitComp.id, LV.HIGH);
+        setActiveClockId(hitComp.id);
+        e.preventDefault();
+        return;
+      }
+
       if (isCtrlOrCmd || isShift) {
         // Multi-select: toggle component in selection
         if (selectedCompIds.includes(hitComp.id)) {
@@ -677,6 +699,11 @@ export default function Canvas({
 
   const onMouseUp = (e) => {
     const p = toLocal(e);
+
+    if (activeClockId) {
+      onSetComponentValue(activeClockId, LV.LOW);
+      setActiveClockId(null);
+    }
 
     // Add component move to history when drag ends
     if (drag && dragMovedRef.current) {
@@ -946,6 +973,20 @@ export default function Canvas({
         >
           {menu.type === "comp" && (
             <div className="min-w-44">
+              {menu.kind === KIND.CLOCK && (
+                <button
+                  className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                  onClick={() => {
+                    onToggleClockMode(menu.id);
+                    closeMenu();
+                  }}
+                >
+                  {circuit.components.find((c) => c.id === menu.id)?.state
+                    .mode === "AUTO"
+                    ? "Set to Manual"
+                    : "Set to Auto"}
+                </button>
+              )}
               {menu.kind !== KIND.JUNCTION && (
                 <button
                   className="w-full text-left px-3 py-2 hover:bg-neutral-800"

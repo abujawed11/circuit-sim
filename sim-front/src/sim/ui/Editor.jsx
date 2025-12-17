@@ -33,7 +33,7 @@ export default function Editor() {
 
                 // Check if any clock needs toggling
                 const nextComponents = prev.components.map((c) => {
-                    if (c.kind === KIND.CLOCK) {
+                    if (c.kind === KIND.CLOCK && c.state.mode !== "MANUAL") {
                         const period = c.state.interval || 1000;
                         const lastTick = c.state.lastTick || 0;
 
@@ -165,6 +165,28 @@ export default function Editor() {
         }
         updateCircuit(next);
     };
+
+    const setComponentValue = (compId, value) => {
+        setCircuit((prev) => {
+            const next = structuredClone(prev);
+            const c = next.components.find((cc) => cc.id === compId);
+            if (c) {
+                c.state.value = value;
+            }
+            return next;
+        });
+    };
+
+    const toggleClockMode = (compId) => {
+        const next = structuredClone(circuit);
+        const c = next.components.find((cc) => cc.id === compId);
+        if (c?.kind === KIND.CLOCK) {
+            c.state.mode = c.state.mode === "MANUAL" ? "AUTO" : "MANUAL";
+        }
+        updateCircuit(next);
+    };
+
+// NEW: connect output pin -> input pin
 
 const connectPins = (aPinId, bPinId, points = []) => {
   const next = structuredClone(circuit);
@@ -344,6 +366,8 @@ const connectPins = (aPinId, bPinId, points = []) => {
                     onUpdateWire={onUpdateWire}
                     onSplitWire={onSplitWire}
                     onSplitWireAndStartDraft={onSplitWireAndStartDraft}
+                    onToggleClockMode={toggleClockMode}
+                    onSetComponentValue={setComponentValue}
                 />
             </div>
         </div>

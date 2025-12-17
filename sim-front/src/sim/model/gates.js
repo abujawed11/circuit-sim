@@ -74,7 +74,7 @@ export const makeComponent = (kind, x, y) => {
         ...base,
         w: 60,
         h: 60,
-        state: { value: LV.LOW, interval: 1000 },
+        state: { value: LV.LOW, interval: 1000, mode: "AUTO" },
         pins: [pin("OUT", "out")],
       };
 
