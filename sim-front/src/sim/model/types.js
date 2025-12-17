@@ -22,6 +22,9 @@ export const KIND = {
   JUNCTION: "JUNCTION",
   PROBE: "PROBE",
   CLOCK: "CLOCK",
+  SR_LATCH: "SR_LATCH",
+  D_FF: "D_FF",
+  JK_FF: "JK_FF",
 };
 
 // Circuit structure:

@@ -41,6 +41,18 @@ export const simulate = (circuit) => {
       const outPin = c.pins.find((p) => p.dir === "out");
       if (outPin) outPin.value = c.state.value;
     }
+    // Seed Flip-Flops/Latches from internal state
+    if (
+      c.kind === KIND.SR_LATCH ||
+      c.kind === KIND.D_FF ||
+      c.kind === KIND.JK_FF
+    ) {
+      const q = c.state.q;
+      const qPin = c.pins.find((p) => p.name === "Q");
+      const qbPin = c.pins.find((p) => p.name === "QB");
+      if (qPin) qPin.value = q;
+      if (qbPin) qbPin.value = q === LV.HIGH ? LV.LOW : q === LV.LOW ? LV.HIGH : LV.X;
+    }
   }
 
   // Iterate a few times to settle
@@ -124,8 +136,47 @@ export const simulate = (circuit) => {
         }
       }
 
-      // LED has no output; it just reads IN pin (used for UI glow)
-      // INPUT output already seeded
+      // Sequential Logic State Calculation
+      // (Outputs are driven by seeded state, we just compute next state here)
+      if (c.kind === KIND.SR_LATCH) {
+        const s = inPins.find((p) => p.name === "S")?.value ?? LV.LOW;
+        const r = inPins.find((p) => p.name === "R")?.value ?? LV.LOW;
+        let nextQ = c.state.q;
+        if (s === LV.HIGH && r === LV.LOW) nextQ = LV.HIGH;
+        else if (s === LV.LOW && r === LV.HIGH) nextQ = LV.LOW;
+        else if (s === LV.HIGH && r === LV.HIGH) nextQ = LV.LOW; // Reset dominant
+        c.state._nextQ = nextQ;
+      }
+
+      if (c.kind === KIND.D_FF) {
+        const d = inPins.find((p) => p.name === "D")?.value ?? LV.LOW;
+        const clk = inPins.find((p) => p.name === "CLK")?.value ?? LV.LOW;
+        const lastClk = c.state.lastClk ?? LV.LOW;
+        let nextQ = c.state.q;
+
+        if (clk === LV.HIGH && lastClk === LV.LOW) {
+          nextQ = d;
+        }
+        c.state._nextQ = nextQ;
+        c.state._nextLastClk = clk;
+      }
+
+      if (c.kind === KIND.JK_FF) {
+        const j = inPins.find((p) => p.name === "J")?.value ?? LV.LOW;
+        const k = inPins.find((p) => p.name === "K")?.value ?? LV.LOW;
+        const clk = inPins.find((p) => p.name === "CLK")?.value ?? LV.LOW;
+        const lastClk = c.state.lastClk ?? LV.LOW;
+        let nextQ = c.state.q;
+
+        if (clk === LV.HIGH && lastClk === LV.LOW) {
+          if (j === LV.LOW && k === LV.HIGH) nextQ = LV.LOW;
+          else if (j === LV.HIGH && k === LV.LOW) nextQ = LV.HIGH;
+          else if (j === LV.HIGH && k === LV.HIGH)
+            nextQ = nextQ === LV.HIGH ? LV.LOW : LV.HIGH;
+        }
+        c.state._nextQ = nextQ;
+        c.state._nextLastClk = clk;
+      }
     }
 
     if (!changed) break;

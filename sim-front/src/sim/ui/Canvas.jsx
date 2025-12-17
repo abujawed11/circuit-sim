@@ -360,6 +360,67 @@ export default function Canvas({
         continue;
       }
 
+      if (
+        c.kind === KIND.SR_LATCH ||
+        c.kind === KIND.D_FF ||
+        c.kind === KIND.JK_FF
+      ) {
+        ctx.fillStyle = "#121212";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        // Title
+        ctx.fillStyle = "#e5e5e5";
+        ctx.font = "bold 14px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          c.kind.replace("_LATCH", "").replace("_FF", ""),
+          c.x + c.w / 2,
+          c.y + 20
+        );
+        ctx.textAlign = "left";
+
+        // Draw Pin Labels
+        ctx.font = "12px system-ui";
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+
+          if (p.name === "CLK") {
+            // Draw triangle
+            ctx.beginPath();
+            ctx.moveTo(c.x, pos.y - 5);
+            ctx.lineTo(c.x + 8, pos.y);
+            ctx.lineTo(c.x, pos.y + 5);
+            ctx.strokeStyle = "#999";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          } else {
+            ctx.fillStyle = "#aaa";
+            const offset = p.dir === "in" ? 8 : -8;
+            ctx.textAlign = p.dir === "in" ? "left" : "right";
+            ctx.fillText(p.name, pos.x + offset, pos.y + 4);
+          }
+
+          // Draw pin dot
+          const isHovered = hoveredPin?.pin?.id === p.id;
+          if (isHovered) {
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+            ctx.fillStyle = "#60a5fa";
+            ctx.fill();
+            ctx.restore();
+          }
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        ctx.textAlign = "left"; // reset
+        continue;
+      }
+
       // Draw logic gates with proper shapes
       const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR, KIND.NAND, KIND.NOR, KIND.XNOR].includes(c.kind);
 
@@ -664,11 +725,11 @@ export default function Canvas({
 
     const hitComp = hitComponent(circuit, x, y);
     if (hitComp) {
+      // Handle manual clock pulse (set HIGH on mouse down, will reset on mouse up if no drag)
       if (hitComp.kind === KIND.CLOCK && hitComp.state.mode === "MANUAL") {
         onSetComponentValue(hitComp.id, LV.HIGH);
         setActiveClockId(hitComp.id);
-        e.preventDefault();
-        return;
+        // Don't return - allow dragging to work!
       }
 
       if (isCtrlOrCmd || isShift) {
@@ -700,10 +761,13 @@ export default function Canvas({
   const onMouseUp = (e) => {
     const p = toLocal(e);
 
+    // Reset manual clock pulse
+    // - If no drag: Creates a pulse (HIGH then LOW)
+    // - If dragged: Reset clock to LOW so it doesn't stay HIGH
     if (activeClockId) {
       onSetComponentValue(activeClockId, LV.LOW);
-      setActiveClockId(null);
     }
+    setActiveClockId(null);
 
     // Add component move to history when drag ends
     if (drag && dragMovedRef.current) {
@@ -1349,7 +1413,14 @@ function pinPosition(c, p) {
   }
 
   // Non-logic gates (INPUT, LED) use box edges
-  if (p.dir === "out") return { x: c.x + c.w, y: c.y + c.h / 2 };
+  if (p.dir === "out") {
+    const outs = c.pins.filter((pp) => pp.dir === "out");
+    if (outs.length === 1) return { x: c.x + c.w, y: c.y + c.h / 2 };
+
+    const idx = outs.findIndex((pp) => pp.id === p.id);
+    const gap = c.h / (outs.length + 1);
+    return { x: c.x + c.w, y: c.y + gap * (idx + 1) };
+  }
 
   const ins = c.pins.filter((pp) => pp.dir === "in");
   const idx = ins.findIndex((pp) => pp.id === p.id);

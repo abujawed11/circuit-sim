@@ -16,6 +16,9 @@ const palette = [
     { kind: KIND.XNOR, label: "XNOR" },
     { kind: KIND.PROBE, label: "Probe" },
     { kind: KIND.CLOCK, label: "Clock" },
+    { kind: KIND.SR_LATCH, label: "SR Latch" },
+    { kind: KIND.D_FF, label: "D Flip-Flop" },
+    { kind: KIND.JK_FF, label: "JK Flip-Flop" },
 ];
 
 export default function Editor() {
@@ -23,6 +26,63 @@ export default function Editor() {
     const [selectedKind, setSelectedKind] = useState(KIND.AND);
     const [history, setHistory] = useState([makeEmptyCircuit()]);
     const [historyIndex, setHistoryIndex] = useState(0);
+
+
+    const [paletteQuery, setPaletteQuery] = useState("");
+
+    const groupedPalette = useMemo(() => {
+        const groups = [
+            {
+                title: "I/O",
+                items: [
+                    { kind: KIND.INPUT, label: "Input", short: "IN", hint: "Toggle 0/1" },
+                    { kind: KIND.LED, label: "LED", short: "OUT", hint: "Shows signal" },
+                    { kind: KIND.PROBE, label: "Probe", short: "DBG", hint: "0/1/X read" },
+                    { kind: KIND.JUNCTION, label: "Junction", short: "NET", hint: "Split wire" },
+                ],
+            },
+            {
+                title: "Gates",
+                items: [
+                    { kind: KIND.NOT, label: "NOT", short: "¬", hint: "Invert" },
+                    { kind: KIND.AND, label: "AND", short: "∧", hint: "All 1" },
+                    { kind: KIND.OR, label: "OR", short: "∨", hint: "Any 1" },
+                    { kind: KIND.XOR, label: "XOR", short: "⊕", hint: "Different" },
+                    { kind: KIND.NAND, label: "NAND", short: "⊼" },
+                    { kind: KIND.NOR, label: "NOR", short: "⊽" },
+                    { kind: KIND.XNOR, label: "XNOR", short: "≡" },
+                ],
+            },
+            {
+                title: "Sequential",
+                items: [
+                    { kind: KIND.CLOCK, label: "Clock", short: "CLK", hint: "Auto toggle" },
+                    { kind: KIND.SR_LATCH, label: "SR Latch", short: "SR" },
+                    { kind: KIND.D_FF, label: "D Flip-Flop", short: "DFF" },
+                    { kind: KIND.JK_FF, label: "JK Flip-Flop", short: "JK" },
+                ],
+            },
+        ];
+
+        const q = paletteQuery.trim().toLowerCase();
+        if (!q) return groups;
+
+        return groups
+            .map((g) => ({
+                ...g,
+                items: g.items.filter((it) => it.label.toLowerCase().includes(q)),
+            }))
+            .filter((g) => g.items.length > 0);
+    }, [paletteQuery]);
+
+    const filteredGroups = groupedPalette;
+
+
+    const simulated = useMemo(() => {
+        const clone = structuredClone(circuit);
+        simulate(clone);
+        return clone;
+    }, [circuit]);
 
     // Clock ticker
     React.useEffect(() => {
@@ -61,6 +121,39 @@ export default function Editor() {
         return () => clearInterval(interval);
     }, []);
 
+    // Sequential logic write-back (persist simulation state)
+    React.useEffect(() => {
+        let changed = false;
+        const nextComponents = simulated.components.map((c) => {
+            let nextState = { ...c.state };
+            let hasUpdate = false;
+
+            if (c.state._nextQ !== undefined && c.state._nextQ !== c.state.q) {
+                nextState.q = c.state._nextQ;
+                delete nextState._nextQ;
+                hasUpdate = true;
+            }
+            if (
+                c.state._nextLastClk !== undefined &&
+                c.state._nextLastClk !== c.state.lastClk
+            ) {
+                nextState.lastClk = c.state._nextLastClk;
+                delete nextState._nextLastClk;
+                hasUpdate = true;
+            }
+
+            if (hasUpdate) {
+                changed = true;
+                return { ...c, state: nextState };
+            }
+            return c;
+        });
+
+        if (changed) {
+            setCircuit((prev) => ({ ...prev, components: nextComponents }));
+        }
+    }, [simulated]);
+
     const updateCircuit = (newCircuit) => {
         const newHistory = history.slice(0, historyIndex + 1);
         newHistory.push(newCircuit);
@@ -77,11 +170,11 @@ export default function Editor() {
         }
     };
 
-    const simulated = useMemo(() => {
-        const clone = structuredClone(circuit);
-        simulate(clone);
-        return clone;
-    }, [circuit]);
+    // const simulated = useMemo(() => {
+    //     const clone = structuredClone(circuit);
+    //     simulate(clone);
+    //     return clone;
+    // }, [circuit]);
 
     const moveComponent = (compId, x, y, addToHistory = true) => {
         const next = structuredClone(circuit);
@@ -186,54 +279,54 @@ export default function Editor() {
         updateCircuit(next);
     };
 
-// NEW: connect output pin -> input pin
+    // NEW: connect output pin -> input pin
 
-const connectPins = (aPinId, bPinId, points = []) => {
-  const next = structuredClone(circuit);
+    const connectPins = (aPinId, bPinId, points = []) => {
+        const next = structuredClone(circuit);
 
-  const findPinMeta = (pinId) => {
-    for (const c of next.components) {
-      const p = c.pins.find((pp) => pp.id === pinId);
-      if (p) return { comp: c, pin: p };
-    }
-    return null;
-  };
+        const findPinMeta = (pinId) => {
+            for (const c of next.components) {
+                const p = c.pins.find((pp) => pp.id === pinId);
+                if (p) return { comp: c, pin: p };
+            }
+            return null;
+        };
 
-  const A = findPinMeta(aPinId);
-  const B = findPinMeta(bPinId);
-  if (!A || !B) return;
+        const A = findPinMeta(aPinId);
+        const B = findPinMeta(bPinId);
+        if (!A || !B) return;
 
-  // ✅ Decide correct direction OUT -> IN regardless of click order
-  let fromPinId, toPinId;
+        // ✅ Decide correct direction OUT -> IN regardless of click order
+        let fromPinId, toPinId;
 
-  if (A.pin.dir === "out" && B.pin.dir === "in") {
-    fromPinId = aPinId;
-    toPinId = bPinId;
-  } else if (A.pin.dir === "in" && B.pin.dir === "out") {
-    fromPinId = bPinId;
-    toPinId = aPinId;
-  } else {
-    // IN->IN or OUT->OUT not allowed (prevents blue confusion)
-    return;
-  }
+        if (A.pin.dir === "out" && B.pin.dir === "in") {
+            fromPinId = aPinId;
+            toPinId = bPinId;
+        } else if (A.pin.dir === "in" && B.pin.dir === "out") {
+            fromPinId = bPinId;
+            toPinId = aPinId;
+        } else {
+            // IN->IN or OUT->OUT not allowed (prevents blue confusion)
+            return;
+        }
 
-  // one wire per input (single driver)
-  next.wires = next.wires.filter((w) => w.toPinId !== toPinId);
+        // one wire per input (single driver)
+        next.wires = next.wires.filter((w) => w.toPinId !== toPinId);
 
-  const exists = next.wires.some(
-    (w) => w.fromPinId === fromPinId && w.toPinId === toPinId
-  );
-  if (!exists) {
-    next.wires.push({
-      id: uid(),
-      fromPinId,
-      toPinId,
-      points,
-    });
-  }
+        const exists = next.wires.some(
+            (w) => w.fromPinId === fromPinId && w.toPinId === toPinId
+        );
+        if (!exists) {
+            next.wires.push({
+                id: uid(),
+                fromPinId,
+                toPinId,
+                points,
+            });
+        }
 
-  updateCircuit(next);
-};
+        updateCircuit(next);
+    };
 
 
 
@@ -311,7 +404,7 @@ const connectPins = (aPinId, bPinId, points = []) => {
     return (
         <div className="h-screen w-screen bg-neutral-950 text-neutral-100 flex">
             {/* Left Palette */}
-            <div className="w-64 border-r border-neutral-800 p-4">
+            {/* <div className="w-64 border-r border-neutral-800 p-4">
                 <div className="text-lg font-semibold">Circuit Sim</div>
                 <div className="text-xs text-neutral-400 mt-1">Digital logic v1</div>
 
@@ -349,7 +442,123 @@ const connectPins = (aPinId, bPinId, points = []) => {
                         Undo
                     </button>
                 </div>
+            </div> */}
+
+
+            {/* Left Palette */}
+            <div className="w-72 border-r border-neutral-800 bg-neutral-950/60 backdrop-blur flex flex-col">
+                {/* Header */}
+                <div className="p-4 border-b border-neutral-800 sticky top-0 bg-neutral-950/80 backdrop-blur z-10">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <div className="text-lg font-semibold tracking-tight">Circuit Sim</div>
+                            <div className="text-xs text-neutral-400 mt-0.5">Digital logic v1</div>
+                        </div>
+
+                        <div className="text-[10px] px-2 py-1 rounded-full border border-neutral-800 text-neutral-300">
+                            Drag & drop
+                        </div>
+                    </div>
+
+                    {/* Search */}
+                    <div className="mt-3">
+                        <input
+                            value={paletteQuery}
+                            onChange={(e) => setPaletteQuery(e.target.value)}
+                            placeholder="Search components…"
+                            className="w-full rounded-xl bg-neutral-900 border border-neutral-800 px-3 py-2 text-sm outline-none
+                   placeholder:text-neutral-500 focus:border-yellow-400/60 focus:ring-2 focus:ring-yellow-400/10"
+                        />
+                    </div>
+                </div>
+
+                {/* Body */}
+                <div className="p-4 overflow-auto flex-1">
+                    {filteredGroups.map((g) => (
+                        <div key={g.title} className="mb-5">
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="text-xs font-semibold text-neutral-300 tracking-wide">
+                                    {g.title}
+                                </div>
+                                <div className="text-[10px] text-neutral-500">
+                                    {g.items.length}
+                                </div>
+                            </div>
+
+                            {/* Grid of cards */}
+                            <div className="grid grid-cols-2 gap-2">
+                                {g.items.map((p) => {
+                                    const active = selectedKind === p.kind;
+                                    return (
+                                        <button
+                                            key={p.kind}
+                                            draggable
+                                            onDragStart={(e) => e.dataTransfer.setData("text/plain", p.kind)}
+                                            onClick={() => setSelectedKind(p.kind)}
+                                            className={[
+                                                "group rounded-xl border px-3 py-2 text-left transition",
+                                                "bg-neutral-900/60 border-neutral-800 hover:bg-neutral-800/70 hover:border-neutral-700",
+                                                active
+                                                    ? "ring-2 ring-yellow-400/25 border-yellow-400/50 bg-yellow-400 text-black"
+                                                    : "",
+                                            ].join(" ")}
+                                            title="Click to select, or drag onto canvas"
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className={["text-sm font-semibold", active ? "text-black" : "text-neutral-100"].join(" ")}>
+                                                    {p.label}
+                                                </div>
+                                                <div
+                                                    className={[
+                                                        "text-[10px] px-1.5 py-0.5 rounded-md border",
+                                                        active
+                                                            ? "border-black/15 text-black/80"
+                                                            : "border-neutral-700 text-neutral-400 group-hover:text-neutral-300",
+                                                    ].join(" ")}
+                                                >
+                                                    {p.short ?? "ADD"}
+                                                </div>
+                                            </div>
+
+                                            {p.hint && (
+                                                <div className={["mt-1 text-[11px] leading-snug", active ? "text-black/70" : "text-neutral-400"].join(" ")}>
+                                                    {p.hint}
+                                                </div>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+
+                    <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-300 leading-relaxed">
+                        <div className="font-semibold text-neutral-200 mb-1">Quick tips</div>
+                        <div>• Click a component then click canvas to place</div>
+                        <div>• Drag from palette to canvas to place</div>
+                        <div>• OUT → IN for valid wiring (others show error)</div>
+                    </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 border-t border-neutral-800 sticky bottom-0 bg-neutral-950/80 backdrop-blur">
+                    <div className="grid grid-cols-2 gap-2">
+                        <button
+                            onClick={undo}
+                            className="rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 px-3 py-2 text-sm text-left"
+                        >
+                            Undo
+                        </button>
+                        <button
+                            onClick={() => updateCircuit(makeEmptyCircuit())}
+                            className="rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 px-3 py-2 text-sm text-left"
+                        >
+                            Clear
+                        </button>
+                    </div>
+                </div>
             </div>
+
 
             {/* Canvas */}
             <div className="flex-1" onDragOver={onDragOver} onDrop={onDrop}>

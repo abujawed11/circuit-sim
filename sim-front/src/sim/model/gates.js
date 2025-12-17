@@ -78,6 +78,49 @@ export const makeComponent = (kind, x, y) => {
         pins: [pin("OUT", "out")],
       };
 
+    case KIND.SR_LATCH:
+      return {
+        ...base,
+        w: 100,
+        h: 80,
+        state: { q: LV.LOW },
+        pins: [
+          pin("S", "in"),
+          pin("R", "in"),
+          pin("Q", "out"),
+          pin("QB", "out"),
+        ],
+      };
+
+    case KIND.D_FF:
+      return {
+        ...base,
+        w: 100,
+        h: 80,
+        state: { q: LV.LOW, lastClk: LV.LOW },
+        pins: [
+          pin("D", "in"),
+          pin("CLK", "in"),
+          pin("Q", "out"),
+          pin("QB", "out"),
+        ],
+      };
+
+    case KIND.JK_FF:
+      return {
+        ...base,
+        w: 100,
+        h: 80,
+        state: { q: LV.LOW, lastClk: LV.LOW },
+        pins: [
+          pin("J", "in"),
+          pin("CLK", "in"),
+          pin("K", "in"),
+          pin("Q", "out"),
+          pin("QB", "out"),
+        ],
+      };
+
     default:
       return base;
   }
