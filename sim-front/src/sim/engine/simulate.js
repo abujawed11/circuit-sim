@@ -59,6 +59,28 @@ export const simulate = (circuit) => {
     }
   }
 
+  // ✅ BUFFER: Output delayed value (like flip-flops output stored state)
+  for (const c of circuit.components) {
+    if (c.kind === KIND.BUFFER) {
+      // Init queue
+      if (!Array.isArray(c.state.queue)) {
+        c.state.queue = [];
+      }
+
+      const delay = Math.max(0, c.props.delay || 0);
+
+      // Output the value at the front of the queue (or X if empty)
+      let output = LV.X;
+      if (c.state.queue.length > 0) {
+        output = c.state.queue[0]; // Peek at oldest value
+      }
+
+      // Set output pin
+      const outPin = c.pins.find((p) => p.dir === "out");
+      if (outPin) outPin.value = output;
+    }
+  }
+
   // Iterate a few times to settle
   for (let iter = 0; iter < 20; iter++) {
     let changed = false;
@@ -173,6 +195,9 @@ export const simulate = (circuit) => {
         }
       }
 
+      // BUFFER is handled BEFORE settle loop (see above)
+      // No need to update it during iteration
+
       // Sequential Logic State Calculation
       // (Outputs are driven by seeded state, we just compute next state here)
       if (c.kind === KIND.SR_LATCH) {
@@ -217,6 +242,31 @@ export const simulate = (circuit) => {
     }
 
     if (!changed) break;
+  }
+
+  // ✅ BUFFER: After settle loop, advance delay line for next simulation tick
+  for (const c of circuit.components) {
+    if (c.kind === KIND.BUFFER) {
+      // Read the settled input value
+      const inPin = c.pins.find((p) => p.dir === "in");
+      const currentInput = inPin?.value ?? LV.X;
+
+      // Push into queue
+      c.state.queue.push(currentInput);
+
+      const delay = Math.max(0, c.props.delay || 0);
+
+      // Remove oldest value if queue is longer than delay
+      if (c.state.queue.length > delay) {
+        c.state.queue.shift();
+      }
+
+      // Limit queue size to prevent unbounded growth
+      const maxQueueSize = delay + 5;
+      if (c.state.queue.length > maxQueueSize) {
+        c.state.queue = c.state.queue.slice(-maxQueueSize);
+      }
+    }
   }
 
   return circuit; // mutated in-place, simple for v1

@@ -26,12 +26,23 @@ const palette = [
 
 export default function Editor() {
     const [circuit, setCircuit] = useState(() => makeEmptyCircuit());
+    const [simTick, setSimTick] = useState(0);
+
     const [selectedKind, setSelectedKind] = useState(KIND.AND);
     const [history, setHistory] = useState([makeEmptyCircuit()]);
     const [historyIndex, setHistoryIndex] = useState(0);
 
 
     const [paletteQuery, setPaletteQuery] = useState("");
+
+
+    React.useEffect(() => {
+        const id = setInterval(() => {
+            setSimTick(t => t + 1);
+        }, 50); // 20 Hz simulation
+        return () => clearInterval(id);
+    }, []);
+
 
     const groupedPalette = useMemo(() => {
         const groups = [
@@ -57,6 +68,7 @@ export default function Editor() {
                     { kind: KIND.NAND, label: "NAND", short: "⊼" },
                     { kind: KIND.NOR, label: "NOR", short: "⊽" },
                     { kind: KIND.XNOR, label: "XNOR", short: "≡" },
+                    { kind: KIND.BUFFER, label: "Buffer (Delay)", short: "BUF", hint: "Delay line" },
                 ],
             },
             {
@@ -84,11 +96,18 @@ export default function Editor() {
     const filteredGroups = groupedPalette;
 
 
+    // const simulated = useMemo(() => {
+    //     const clone = structuredClone(circuit);
+    //     simulate(clone);
+    //     return clone;
+    // }, [circuit]);
+
     const simulated = useMemo(() => {
         const clone = structuredClone(circuit);
         simulate(clone);
         return clone;
-    }, [circuit]);
+    }, [circuit, simTick]);
+
 
     // Clock ticker
     React.useEffect(() => {
@@ -147,6 +166,14 @@ export default function Editor() {
                 delete nextState._nextLastClk;
                 hasUpdate = true;
             }
+            // ✅ NEW: persist BUFFER delay-line memory
+            if (c.kind === KIND.BUFFER) {
+                // ensure queue exists
+                const q = Array.isArray(c.state.queue) ? c.state.queue : [];
+                // Always persist queue so delay advances across frames
+                nextState.queue = q;
+                hasUpdate = true;
+            }
 
             if (hasUpdate) {
                 changed = true;
@@ -155,9 +182,45 @@ export default function Editor() {
             return c;
         });
 
-        if (changed) {
-            setCircuit((prev) => ({ ...prev, components: nextComponents }));
-        }
+        // if (changed) {
+        //     setCircuit((prev) => ({ ...prev, components: nextComponents }));
+        // }
+
+        if (!changed) return;
+
+        setCircuit((prev) => {
+            // If nothing actually changed compared to prev, return prev (prevents render loop)
+            let anyRealChange = false;
+
+            const prevById = new Map(prev.components.map((c) => [c.id, c]));
+
+            const merged = prev.components.map((pc) => {
+                const sc = nextComponents.find((x) => x.id === pc.id);
+                if (!sc) return pc;
+
+                // Compare ONLY state fields you want to persist (q/lastClk + buffer queue)
+                const ps = pc.state || {};
+                const ns = sc.state || {};
+
+                const sameQ = ps.q === ns.q;
+                const sameLastClk = ps.lastClk === ns.lastClk;
+
+                const pq = Array.isArray(ps.queue) ? ps.queue : null;
+                const nq = Array.isArray(ns.queue) ? ns.queue : null;
+                const sameQueue =
+                    pq === null && nq === null
+                        ? true
+                        : pq && nq && pq.length === nq.length && pq.every((v, i) => v === nq[i]);
+
+                if (sameQ && sameLastClk && sameQueue) return pc;
+
+                anyRealChange = true;
+                return { ...pc, state: { ...pc.state, ...ns } };
+            });
+
+            return anyRealChange ? { ...prev, components: merged } : prev;
+        });
+
     }, [simulated]);
 
     const updateCircuit = (newCircuit) => {

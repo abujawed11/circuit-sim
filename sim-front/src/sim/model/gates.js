@@ -148,6 +148,21 @@ export const makeComponent = (kind, x, y) => {
         ],
       };
 
+    case KIND.BUFFER:
+      return {
+        ...base,
+        w: 100,
+        h: 60,
+        props: {
+          delay: 2, // number of simulation cycles
+        },
+        state: {
+          queue: [], // stores delayed values
+        },
+        pins: [pin("A", "in"), pin("Y", "out")],
+      };
+
+
     default:
       return base;
   }
