@@ -1656,9 +1656,9 @@ function pinPosition(c, p) {
       const selects = c.pins.filter((pp) => pp.name.startsWith("S"));
       const idx = selects.findIndex((pp) => pp.id === p.id);
       const count = selects.length;
-      // Distribute evenly along bottom edge
+      // Distribute evenly along bottom edge, MSB on left
       const step = c.w / (count + 1);
-      return { x: c.x + step * (idx + 1), y: c.y + c.h };
+      return { x: c.x + step * (count - idx), y: c.y + c.h };
     } else {
       // Side pins (I0..In or Y0..Yn)
       // Filter out selector pins to get correct vertical distribution
