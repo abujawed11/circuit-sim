@@ -523,12 +523,14 @@ export default function Canvas({
         ctx.fillStyle = "#e5e5e5";
         ctx.font = "bold 14px system-ui";
         ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
         ctx.fillText(
           c.kind.replace("_LATCH", "").replace("_FF", ""),
           c.x + c.w / 2,
-          c.y + 20
+          c.y + c.h / 2
         );
         ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
 
         // Draw Pin Labels
         ctx.font = "12px system-ui";
@@ -544,6 +546,20 @@ export default function Canvas({
             ctx.strokeStyle = "#999";
             ctx.lineWidth = 1;
             ctx.stroke();
+            
+            // Label
+            ctx.fillStyle = "#aaa";
+            ctx.fillText("CLK", c.x + 10, pos.y + 4);
+          } else if (p.name === "PRE") {
+            ctx.fillStyle = "#aaa";
+            ctx.textAlign = "center";
+            ctx.fillText("PRE", pos.x, pos.y + 12);
+            ctx.textAlign = "left";
+          } else if (p.name === "CLR") {
+            ctx.fillStyle = "#aaa";
+            ctx.textAlign = "center";
+            ctx.fillText("CLR", pos.x, pos.y - 5);
+            ctx.textAlign = "left";
           } else {
             ctx.fillStyle = "#aaa";
             const offset = p.dir === "in" ? 8 : -8;
@@ -1783,6 +1799,12 @@ function pinPosition(c, p) {
     return { x: c.x + 6, y: c.y + 30 };
   }
 
+  // ✅ FF PRE/CLR: Top/Bottom Center
+  if ((c.kind === KIND.D_FF || c.kind === KIND.JK_FF) && (p.name === "PRE" || p.name === "CLR")) {
+    if (p.name === "PRE") return { x: c.x + c.w / 2, y: c.y };
+    if (p.name === "CLR") return { x: c.x + c.w / 2, y: c.y + c.h };
+  }
+
   // Logic gates have insets, adjust pin positions
   const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR, KIND.NAND, KIND.NOR, KIND.XNOR].includes(c.kind);
 
@@ -1840,7 +1862,13 @@ function pinPosition(c, p) {
     return { x: c.x + c.w, y: c.y + gap * (idx + 1) };
   }
 
-  const ins = c.pins.filter((pp) => pp.dir === "in");
+  let ins = c.pins.filter((pp) => pp.dir === "in");
+  
+  // ✅ Fix for Flip-Flops: Exclude special pins from side distribution
+  if (c.kind === KIND.D_FF || c.kind === KIND.JK_FF || c.kind === KIND.SR_LATCH) {
+      ins = ins.filter(pp => pp.name !== "PRE" && pp.name !== "CLR");
+  }
+
   const idx = ins.findIndex((pp) => pp.id === p.id);
   const gap = c.h / (ins.length + 1);
   return { x: c.x, y: c.y + gap * (idx + 1) };

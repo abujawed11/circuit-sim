@@ -282,10 +282,16 @@ export const simulate = (circuit) => {
       if (c.kind === KIND.D_FF) {
         const d = inPins.find((p) => p.name === "D")?.value ?? LV.LOW;
         const clk = inPins.find((p) => p.name === "CLK")?.value ?? LV.LOW;
+        const pre = inPins.find((p) => p.name === "PRE")?.value ?? LV.LOW;
+        const clr = inPins.find((p) => p.name === "CLR")?.value ?? LV.LOW;
         const lastClk = c.state.lastClk ?? LV.LOW;
         let nextQ = c.state.q;
 
-        if (clk === LV.HIGH && lastClk === LV.LOW) {
+        if (clr === LV.HIGH) {
+          nextQ = LV.LOW;
+        } else if (pre === LV.HIGH) {
+          nextQ = LV.HIGH;
+        } else if (clk === LV.HIGH && lastClk === LV.LOW) {
           nextQ = d;
         }
         c.state._nextQ = nextQ;
@@ -296,10 +302,16 @@ export const simulate = (circuit) => {
         const j = inPins.find((p) => p.name === "J")?.value ?? LV.LOW;
         const k = inPins.find((p) => p.name === "K")?.value ?? LV.LOW;
         const clk = inPins.find((p) => p.name === "CLK")?.value ?? LV.LOW;
+        const pre = inPins.find((p) => p.name === "PRE")?.value ?? LV.LOW;
+        const clr = inPins.find((p) => p.name === "CLR")?.value ?? LV.LOW;
         const lastClk = c.state.lastClk ?? LV.LOW;
         let nextQ = c.state.q;
 
-        if (clk === LV.HIGH && lastClk === LV.LOW) {
+        if (clr === LV.HIGH) {
+          nextQ = LV.LOW;
+        } else if (pre === LV.HIGH) {
+          nextQ = LV.HIGH;
+        } else if (clk === LV.HIGH && lastClk === LV.LOW) {
           if (j === LV.LOW && k === LV.HIGH) nextQ = LV.LOW;
           else if (j === LV.HIGH && k === LV.LOW) nextQ = LV.HIGH;
           else if (j === LV.HIGH && k === LV.HIGH)

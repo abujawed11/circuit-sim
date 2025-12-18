@@ -128,6 +128,8 @@ export const makeComponent = (kind, x, y) => {
         pins: [
           pin("D", "in"),
           pin("CLK", "in"),
+          pin("PRE", "in"),
+          pin("CLR", "in"),
           pin("Q", "out"),
           pin("QB", "out"),
         ],
@@ -143,6 +145,8 @@ export const makeComponent = (kind, x, y) => {
           pin("J", "in"),
           pin("CLK", "in"),
           pin("K", "in"),
+          pin("PRE", "in"),
+          pin("CLR", "in"),
           pin("Q", "out"),
           pin("QB", "out"),
         ],
