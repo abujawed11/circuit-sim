@@ -1,5 +1,8 @@
 import { KIND, LV } from "../model/types";
 
+// Debug: Check if MUX/DEMUX constants exist
+// console.log("simulate.js loaded - KIND.MUX:", KIND.MUX, "KIND.DEMUX:", KIND.DEMUX);
+
 const inv = (v) => (v === LV.HIGH ? LV.LOW : v === LV.LOW ? LV.HIGH : LV.X);
 
 const and2 = (a, b) => {
@@ -304,6 +307,76 @@ export const simulate = (circuit) => {
         }
         c.state._nextQ = nextQ;
         c.state._nextLastClk = clk;
+      }
+
+      if (c.kind === KIND.MUX) {
+        // MUX Logic: Select one input (I0..In) based on Select lines (S0..Sm)
+        const size = c.props.size || 2;
+        const selectCount = Math.log2(size);
+
+        // console.log(`\n=== MUX ${size}:1 (id=${c.id.substring(0,8)}...) ===`);
+        // console.log(`Component kind: "${c.kind}", KIND.MUX="${KIND.MUX}"`);
+        // console.log(`Output pins:`, outPins.map(p => `${p.name}(id=${p.id.substring(0,8)}...)`).join(', '));
+
+        let selectIdx = 0;
+        let selectValid = true;
+        for (let i = 0; i < selectCount; i++) {
+          const sPin = inPins.find(p => p.name === `S${i}`);
+          const sVal = sPin?.value ?? LV.X;
+
+          // Debug logging
+          // console.log(`MUX Debug: S${i} pin:`, sPin ? `found, value=${sVal}` : 'NOT FOUND');
+
+          if (sVal === LV.X) {
+            selectValid = false;
+            break;
+          }
+          if (sVal === LV.HIGH) selectIdx += Math.pow(2, i);
+        }
+
+        // console.log(`MUX Debug: selectIdx=${selectIdx}, selectValid=${selectValid}`);
+
+        if (!selectValid) {
+          setOut("Y", LV.X);
+        } else {
+          const selectedPin = inPins.find(p => p.name === `I${selectIdx}`);
+          const selectedInput = selectedPin?.value ?? LV.X;
+
+          // Debug logging
+          // console.log(`MUX Debug: I${selectIdx} pin:`, selectedPin ? `found, value=${selectedInput}` : 'NOT FOUND');
+          // console.log(`MUX Debug: Output Y=${selectedInput}`);
+
+          setOut("Y", selectedInput);
+        }
+      }
+
+      if (c.kind === KIND.DEMUX) {
+        const size = c.props.size || 2;
+        const selectCount = Math.log2(size);
+        const inputVal = inPins.find(p => p.name === "I")?.value ?? LV.X;
+
+        // console.log(`\n=== DEMUX 1:${size} (id=${c.id.substring(0,8)}...) ===`);
+        // console.log(`Component kind: "${c.kind}", KIND.DEMUX="${KIND.DEMUX}"`);
+        // console.log(`Output pins:`, outPins.map(p => `${p.name}(id=${p.id.substring(0,8)}...)`).join(', '));
+
+        let selectIdx = 0;
+        let selectValid = true;
+        for (let i = 0; i < selectCount; i++) {
+          const sVal = inPins.find(p => p.name === `S${i}`)?.value ?? LV.X;
+          if (sVal === LV.X) {
+            selectValid = false;
+            break;
+          }
+          if (sVal === LV.HIGH) selectIdx += Math.pow(2, i);
+        }
+
+        for (let i = 0; i < size; i++) {
+          if (!selectValid) {
+            setOut(`Y${i}`, LV.X);
+          } else {
+            setOut(`Y${i}`, i === selectIdx ? inputVal : LV.LOW);
+          }
+        }
       }
     }
 

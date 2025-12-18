@@ -29,6 +29,8 @@ export const KIND = {
   D_FF: "D_FF",
   JK_FF: "JK_FF",
   BUFFER: "BUFFER",
+  MUX: "MUX",
+  DEMUX: "DEMUX",
 };
 
 // Circuit structure:

@@ -481,6 +481,51 @@ export default function Canvas({
           continue;
       }
 
+      if (c.kind === KIND.MUX || c.kind === KIND.DEMUX) {
+        ctx.fillStyle = "#121212";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+        ctx.fill();
+        ctx.stroke();
+
+        // Title
+        ctx.fillStyle = "#e5e5e5";
+        ctx.font = "bold 14px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(
+          c.kind === KIND.MUX ? `MUX ${c.props.size}:1` : `DEMUX 1:${c.props.size}`,
+          c.x + c.w / 2,
+          c.y + 20
+        );
+        ctx.textAlign = "left";
+
+        // Draw Pin Labels
+        ctx.font = "10px system-ui";
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+          ctx.fillStyle = "#aaa";
+          const offset = p.dir === "in" ? 8 : -8;
+          ctx.textAlign = p.dir === "in" ? "left" : "right";
+          ctx.fillText(p.name, pos.x + offset, pos.y + 4);
+
+          // Draw pin dot
+          const isHovered = hoveredPin?.pin?.id === p.id;
+          if (isHovered) {
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+            ctx.fillStyle = "#60a5fa";
+            ctx.fill();
+            ctx.restore();
+          }
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        ctx.textAlign = "left"; // reset
+        continue;
+      }
+
       // Draw logic gates with proper shapes
       const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR, KIND.NAND, KIND.NOR, KIND.XNOR].includes(c.kind);
 

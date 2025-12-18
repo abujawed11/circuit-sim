@@ -162,6 +162,38 @@ export const makeComponent = (kind, x, y) => {
         pins: [pin("A", "in"), pin("Y", "out")],
       };
 
+    case KIND.MUX: {
+      const size = 2; // Default size, will be overridden by Editor during placement
+      const selectCount = Math.log2(size);
+      const pins = [];
+      for (let i = 0; i < size; i++) pins.push(pin(`I${i}`, "in"));
+      for (let i = 0; i < selectCount; i++) pins.push(pin(`S${i}`, "in"));
+      pins.push(pin("Y", "out"));
+
+      return {
+        ...base,
+        w: 100,
+        h: Math.max(80, size * 20 + 20),
+        props: { size },
+        pins,
+      };
+    }
+
+    case KIND.DEMUX: {
+      const size = 2;
+      const selectCount = Math.log2(size);
+      const pins = [pin("I", "in")];
+      for (let i = 0; i < selectCount; i++) pins.push(pin(`S${i}`, "in"));
+      for (let i = 0; i < size; i++) pins.push(pin(`Y${i}`, "out"));
+
+      return {
+        ...base,
+        w: 100,
+        h: Math.max(80, size * 20 + 20),
+        props: { size },
+        pins,
+      };
+    }
 
     default:
       return base;

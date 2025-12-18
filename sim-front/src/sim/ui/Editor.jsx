@@ -106,6 +106,12 @@ export default function Editor() {
                     { kind: KIND.NOR, label: "NOR", short: "⊽" },
                     { kind: KIND.XNOR, label: "XNOR", short: "≡" },
                     { kind: KIND.BUFFER, label: "Buffer (Delay)", short: "BUF", hint: "Delay line" },
+                    { kind: "MUX_2", label: "MUX 2:1", short: "MUX", hint: "Select 1 of 2" },
+                    { kind: "MUX_4", label: "MUX 4:1", short: "MUX", hint: "Select 1 of 4" },
+                    { kind: "MUX_8", label: "MUX 8:1", short: "MUX", hint: "Select 1 of 8" },
+                    { kind: "DEMUX_2", label: "DEMUX 1:2", short: "DMX", hint: "Route to 1 of 2" },
+                    { kind: "DEMUX_4", label: "DEMUX 1:4", short: "DMX", hint: "Route to 1 of 4" },
+                    { kind: "DEMUX_8", label: "DEMUX 1:8", short: "DMX", hint: "Route to 1 of 8" },
                 ],
             },
             {
@@ -425,6 +431,29 @@ export default function Editor() {
                 };
                 next.components.push(newComp);
             }
+        } else if (kind.startsWith("MUX_") || kind.startsWith("DEMUX_")) {
+            const [baseKind, sizeStr] = kind.split("_");
+            const size = parseInt(sizeStr);
+            const comp = makeComponent(baseKind === "MUX" ? KIND.MUX : KIND.DEMUX, x, y);
+            
+            comp.props = { size };
+            comp.h = Math.max(80, size * 24 + 30);
+            
+            // Regenerate pins for the specific size
+            const selectCount = Math.log2(size);
+            const pins = [];
+            
+            if (baseKind === "MUX") {
+                for (let i = 0; i < size; i++) pins.push({ id: uid(), name: `I${i}`, dir: "in", value: LV.X });
+                for (let i = 0; i < selectCount; i++) pins.push({ id: uid(), name: `S${i}`, dir: "in", value: LV.X });
+                pins.push({ id: uid(), name: "Y", dir: "out", value: LV.X });
+            } else {
+                pins.push({ id: uid(), name: "I", dir: "in", value: LV.X });
+                for (let i = 0; i < selectCount; i++) pins.push({ id: uid(), name: `S${i}`, dir: "in", value: LV.X });
+                for (let i = 0; i < size; i++) pins.push({ id: uid(), name: `Y${i}`, dir: "out", value: LV.X });
+            }
+            comp.pins = pins;
+            next.components.push(comp);
         } else {
             next.components.push(makeComponent(kind, x, y));
         }
