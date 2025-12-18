@@ -504,10 +504,21 @@ export default function Canvas({
         ctx.font = "10px system-ui";
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
-          ctx.fillStyle = "#aaa";
-          const offset = p.dir === "in" ? 8 : -8;
-          ctx.textAlign = p.dir === "in" ? "left" : "right";
-          ctx.fillText(p.name, pos.x + offset, pos.y + 4);
+          
+          if (p.name.startsWith("S")) {
+            // Selectors at bottom: draw label above pin
+            ctx.fillStyle = "#aaa";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "bottom"; 
+            ctx.fillText(p.name, pos.x, pos.y - 4);
+            ctx.textBaseline = "alphabetic"; // Reset
+          } else {
+            // Side pins
+            ctx.fillStyle = "#aaa";
+            const offset = p.dir === "in" ? 8 : -8;
+            ctx.textAlign = p.dir === "in" ? "left" : "right";
+            ctx.fillText(p.name, pos.x + offset, pos.y + 4);
+          }
 
           // Draw pin dot
           const isHovered = hoveredPin?.pin?.id === p.id;
@@ -1637,6 +1648,26 @@ function pinPosition(c, p) {
   // ✅ Junction pins meet exactly at the node center
   if (c.kind === KIND.JUNCTION) {
     return { x: c.x + c.w / 2, y: c.y + c.h / 2 };
+  }
+
+  // ✅ MUX/DEMUX: Selectors at bottom, others on sides
+  if (c.kind === KIND.MUX || c.kind === KIND.DEMUX) {
+    if (p.name.startsWith("S")) {
+      const selects = c.pins.filter((pp) => pp.name.startsWith("S"));
+      const idx = selects.findIndex((pp) => pp.id === p.id);
+      const count = selects.length;
+      // Distribute evenly along bottom edge
+      const step = c.w / (count + 1);
+      return { x: c.x + step * (idx + 1), y: c.y + c.h };
+    } else {
+      // Side pins (I0..In or Y0..Yn)
+      // Filter out selector pins to get correct vertical distribution
+      const sidePins = c.pins.filter((pp) => pp.dir === p.dir && !pp.name.startsWith("S"));
+      const idx = sidePins.findIndex((pp) => pp.id === p.id);
+      const gap = c.h / (sidePins.length + 1);
+      const x = p.dir === "in" ? c.x : c.x + c.w;
+      return { x, y: c.y + gap * (idx + 1) };
+    }
   }
 
   // Logic gates have insets, adjust pin positions
