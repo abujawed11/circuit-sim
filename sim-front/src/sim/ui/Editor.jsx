@@ -121,6 +121,7 @@ export default function Editor() {
                     { kind: KIND.SR_LATCH, label: "SR Latch", short: "SR" },
                     { kind: KIND.D_FF, label: "D Flip-Flop", short: "DFF" },
                     { kind: KIND.JK_FF, label: "JK Flip-Flop", short: "JK" },
+                    { kind: KIND.T_FF, label: "T Flip-Flop", short: "TFF" },
                 ],
             },
         ];

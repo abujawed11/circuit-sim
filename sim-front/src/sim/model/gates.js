@@ -152,6 +152,22 @@ export const makeComponent = (kind, x, y) => {
         ],
       };
 
+    case KIND.T_FF:
+      return {
+        ...base,
+        w: 100,
+        h: 80,
+        state: { q: LV.LOW, lastClk: LV.LOW },
+        pins: [
+          pin("T", "in"),
+          pin("CLK", "in"),
+          pin("PRE", "in"),
+          pin("CLR", "in"),
+          pin("Q", "out"),
+          pin("QB", "out"),
+        ],
+      };
+
     case KIND.BUFFER:
       return {
         ...base,

@@ -28,6 +28,7 @@ export const KIND = {
   SR_LATCH: "SR_LATCH",
   D_FF: "D_FF",
   JK_FF: "JK_FF",
+  T_FF: "T_FF",
   BUFFER: "BUFFER",
   MUX: "MUX",
   DEMUX: "DEMUX",

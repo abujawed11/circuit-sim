@@ -52,7 +52,8 @@ export const simulate = (circuit) => {
     if (
       c.kind === KIND.SR_LATCH ||
       c.kind === KIND.D_FF ||
-      c.kind === KIND.JK_FF
+      c.kind === KIND.JK_FF ||
+      c.kind === KIND.T_FF
     ) {
       const q = c.state.q;
       const qPin = c.pins.find((p) => p.name === "Q");
@@ -316,6 +317,28 @@ export const simulate = (circuit) => {
           else if (j === LV.HIGH && k === LV.LOW) nextQ = LV.HIGH;
           else if (j === LV.HIGH && k === LV.HIGH)
             nextQ = nextQ === LV.HIGH ? LV.LOW : LV.HIGH;
+        }
+        c.state._nextQ = nextQ;
+        c.state._nextLastClk = clk;
+      }
+
+      if (c.kind === KIND.T_FF) {
+        const t = inPins.find((p) => p.name === "T")?.value ?? LV.LOW;
+        const clk = inPins.find((p) => p.name === "CLK")?.value ?? LV.LOW;
+        const pre = inPins.find((p) => p.name === "PRE")?.value ?? LV.LOW;
+        const clr = inPins.find((p) => p.name === "CLR")?.value ?? LV.LOW;
+        const lastClk = c.state.lastClk ?? LV.LOW;
+        let nextQ = c.state.q;
+
+        if (clr === LV.HIGH) {
+          nextQ = LV.LOW;
+        } else if (pre === LV.HIGH) {
+          nextQ = LV.HIGH;
+        } else if (clk === LV.HIGH && lastClk === LV.LOW) {
+          // Toggle if T is high
+          if (t === LV.HIGH) {
+            nextQ = nextQ === LV.HIGH ? LV.LOW : LV.HIGH;
+          }
         }
         c.state._nextQ = nextQ;
         c.state._nextLastClk = clk;

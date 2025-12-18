@@ -510,7 +510,8 @@ export default function Canvas({
       if (
         c.kind === KIND.SR_LATCH ||
         c.kind === KIND.D_FF ||
-        c.kind === KIND.JK_FF
+        c.kind === KIND.JK_FF ||
+        c.kind === KIND.T_FF
       ) {
         ctx.fillStyle = "#121212";
         ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
@@ -1800,7 +1801,7 @@ function pinPosition(c, p) {
   }
 
   // ✅ FF PRE/CLR: Top/Bottom Center
-  if ((c.kind === KIND.D_FF || c.kind === KIND.JK_FF) && (p.name === "PRE" || p.name === "CLR")) {
+  if ((c.kind === KIND.D_FF || c.kind === KIND.JK_FF || c.kind === KIND.T_FF) && (p.name === "PRE" || p.name === "CLR")) {
     if (p.name === "PRE") return { x: c.x + c.w / 2, y: c.y };
     if (p.name === "CLR") return { x: c.x + c.w / 2, y: c.y + c.h };
   }
@@ -1865,7 +1866,7 @@ function pinPosition(c, p) {
   let ins = c.pins.filter((pp) => pp.dir === "in");
   
   // ✅ Fix for Flip-Flops: Exclude special pins from side distribution
-  if (c.kind === KIND.D_FF || c.kind === KIND.JK_FF || c.kind === KIND.SR_LATCH) {
+  if (c.kind === KIND.D_FF || c.kind === KIND.JK_FF || c.kind === KIND.SR_LATCH || c.kind === KIND.T_FF) {
       ins = ins.filter(pp => pp.name !== "PRE" && pp.name !== "CLR");
   }
 
