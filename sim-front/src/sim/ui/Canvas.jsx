@@ -120,6 +120,7 @@ export default function Canvas({
   const [drag, setDrag] = useState(null); // { compId, dx, dy }
   const [wireDrag, setWireDrag] = useState(null); // { wireId, dx, dy }
   const [pointDrag, setPointDrag] = useState(null); // { wireId, pointIndex, dx, dy }
+  const [selectionBox, setSelectionBox] = useState(null); // { startX, startY, currentX, currentY }
   const [activeClockId, setActiveClockId] = useState(null);
   const [activeButtonId, setActiveButtonId] = useState(null);
   const [menu, setMenu] = useState(null);
@@ -654,12 +655,52 @@ export default function Canvas({
       }
     }
 
+    // ---- Draw selection box ----
+    if (selectionBox) {
+      const { startX, startY, currentX, currentY } = selectionBox;
+
+      // Calculate rectangle (handle any drag direction)
+      const left = Math.min(startX, currentX);
+      const right = Math.max(startX, currentX);
+      const top = Math.min(startY, currentY);
+      const bottom = Math.max(startY, currentY);
+      const width = right - left;
+      const height = bottom - top;
+
+      // Draw semi-transparent fill
+      ctx.fillStyle = "rgba(250, 217, 14, 0.1)"; // Yellow with low opacity
+      ctx.fillRect(left, top, width, height);
+
+      // Draw border
+      ctx.strokeStyle = "#FAD90E"; // Yellow border
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 3]); // Dashed line
+      ctx.strokeRect(left, top, width, height);
+      ctx.setLineDash([]); // Reset dash
+
+      // Draw corner handles
+      const handleSize = 6;
+      ctx.fillStyle = "#FAD90E";
+      const corners = [
+        [left, top],
+        [right, top],
+        [left, bottom],
+        [right, bottom]
+      ];
+      corners.forEach(([x, y]) => {
+        ctx.fillRect(x - handleSize / 2, y - handleSize / 2, handleSize, handleSize);
+      });
+    }
+
     // Status text at bottom
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.font = "12px system-ui";
 
     const totalSelected = selectedCompIds.length + selectedWireIds.length;
-    if (totalSelected > 0) {
+    if (selectionBox) {
+      // Show drag selection hint
+      ctx.fillText("Drag to select multiple items • Release to finalize selection", 14, rect.height - 14);
+    } else if (totalSelected > 0) {
       const compText = selectedCompIds.length > 0 ? `${selectedCompIds.length} component${selectedCompIds.length > 1 ? 's' : ''}` : '';
       const wireText = selectedWireIds.length > 0 ? `${selectedWireIds.length} wire${selectedWireIds.length > 1 ? 's' : ''}` : '';
       const parts = [compText, wireText].filter(Boolean);
@@ -691,7 +732,10 @@ export default function Canvas({
     const p = toLocal(e);
     setMouse(p);
 
-    if (drag) {
+    if (selectionBox) {
+      // Update selection box as user drags
+      setSelectionBox({ ...selectionBox, currentX: p.x, currentY: p.y });
+    } else if (drag) {
       const dx = p.x - dragStartRef.current.x;
       const dy = p.y - dragStartRef.current.y;
       if (dx * dx + dy * dy > 4) {
@@ -874,17 +918,67 @@ export default function Canvas({
       }
       e.preventDefault();
     } else {
-      // Clicked on empty space - clear all selections
-      setSelectedCompId(null);
-      setSelectedWireId(null);
-      setSelectedCompIds([]);
-      setSelectedWireIds([]);
+      // Clicked on empty space - start selection box (unless Ctrl/Cmd for multi-select)
+      if (!isCtrlOrCmd && !isShift) {
+        // Clear selections and start drag select
+        setSelectedCompId(null);
+        setSelectedWireId(null);
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
+        setSelectionBox({ startX: x, startY: y, currentX: x, currentY: y });
+      }
     }
   };
 
 
   const onMouseUp = (e) => {
     const p = toLocal(e);
+
+    // Finalize selection box
+    if (selectionBox) {
+      const { startX, startY, currentX, currentY } = selectionBox;
+
+      // Calculate selection rectangle (handle any drag direction)
+      const left = Math.min(startX, currentX);
+      const right = Math.max(startX, currentX);
+      const top = Math.min(startY, currentY);
+      const bottom = Math.max(startY, currentY);
+
+      // Only select if box has some size (not just a click)
+      if (Math.abs(currentX - startX) > 5 || Math.abs(currentY - startY) > 5) {
+        // Find all components within selection box
+        const selectedComps = circuit.components.filter(c => {
+          // Check if component's bounding box intersects with selection box
+          const compLeft = c.x;
+          const compRight = c.x + c.w;
+          const compTop = c.y;
+          const compBottom = c.y + c.h;
+
+          return !(compRight < left || compLeft > right || compBottom < top || compTop > bottom);
+        });
+
+        // Find all wires within selection box
+        const selectedWs = circuit.wires.filter(w => {
+          const from = findPinPos(circuit, w.fromPinId);
+          const to = findPinPos(circuit, w.toPinId);
+          if (!from || !to) return false;
+
+          // Check if any point of the wire is within the box
+          const wirePoints = buildWirePolyline(from, to, w.points);
+          return wirePoints.some(pt =>
+            pt.x >= left && pt.x <= right && pt.y >= top && pt.y <= bottom
+          );
+        });
+
+        setSelectedCompIds(selectedComps.map(c => c.id));
+        setSelectedWireIds(selectedWs.map(w => w.id));
+        setSelectedCompId(null);
+        setSelectedWireId(null);
+      }
+
+      setSelectionBox(null);
+      return;
+    }
 
     // Reset manual clock pulse
     // - If no drag: Creates a pulse (HIGH then LOW)
