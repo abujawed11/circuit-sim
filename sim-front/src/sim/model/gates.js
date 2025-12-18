@@ -59,7 +59,7 @@ export const makeComponent = (kind, x, y) => {
     case KIND.LED:
       return {
         ...base,
-        w: 110,
+        w: 60,
         h: 60,
         pins: [pin("IN", "in")],
       };

@@ -380,6 +380,60 @@ export default function Canvas({
         continue;
       }
 
+      if (c.kind === KIND.LED) {
+        const isSel = c.id === selectedCompId || selectedCompIds.includes(c.id);
+        const inPin = c.pins.find((p) => p.name === "IN");
+        const on = inPin?.value === LV.HIGH;
+
+        // Selection highlight
+        if (isSel) {
+          ctx.beginPath();
+          ctx.arc(c.x + 30, c.y + 30, 25, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(250, 217, 14, 0.1)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(250, 217, 14, 0.3)";
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // Bulb Body (Glass)
+        ctx.beginPath();
+        ctx.arc(c.x + 30, c.y + 30, 15, 0, Math.PI * 2);
+        
+        if (on) {
+          // Glow effect
+          ctx.shadowColor = "#00ff00";
+          ctx.shadowBlur = 20;
+          ctx.fillStyle = "#4ade80"; // Bright green
+          ctx.fill();
+          ctx.shadowBlur = 0; // Reset
+        } else {
+          ctx.fillStyle = "#14532d"; // Dark green
+          ctx.fill();
+        }
+
+        // Reflection/Shine
+        ctx.beginPath();
+        ctx.arc(c.x + 25, c.y + 25, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(255,255,255,0.3)";
+        ctx.fill();
+
+        // Rim
+        ctx.beginPath();
+        ctx.arc(c.x + 30, c.y + 30, 15, 0, Math.PI * 2);
+        ctx.strokeStyle = on ? "#22c55e" : "#064e3b";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Draw pin
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        continue;
+      }
+
       if (c.kind === KIND.PROBE) {
         ctx.fillStyle = "#121212";
         ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
@@ -715,18 +769,6 @@ export default function Canvas({
           ctx.moveTo(centerX - 4, centerY + 15);
           ctx.lineTo(centerX + 4, centerY + 15);
           ctx.stroke();
-        }
-
-        if (c.kind === KIND.LED) {
-          const inPin = c.pins.find((p) => p.name === "IN");
-          const on = inPin?.value === LV.HIGH;
-          ctx.fillStyle = on ? "rgba(250,217,14,0.25)" : "rgba(255,255,255,0.04)";
-          roundRect(ctx, c.x + 8, c.y + 30, c.w - 16, c.h - 38, 10);
-          ctx.fill();
-
-          ctx.fillStyle = on ? "#FAD90E" : "#777";
-          ctx.font = "12px system-ui";
-          ctx.fillText(on ? "ON" : "OFF", c.x + 12, c.y + c.h - 12);
         }
       }
 
@@ -1734,6 +1776,11 @@ function pinPosition(c, p) {
   // ✅ BUTTON: Pin closer to circle
   if (c.kind === KIND.BUTTON) {
     return { x: c.x + 50, y: c.y + 30 };
+  }
+
+  // ✅ LED: Pin on left
+  if (c.kind === KIND.LED) {
+    return { x: c.x + 6, y: c.y + 30 };
   }
 
   // Logic gates have insets, adjust pin positions
