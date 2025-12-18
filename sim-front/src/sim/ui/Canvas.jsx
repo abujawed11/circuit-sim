@@ -298,6 +298,88 @@ export default function Canvas({
         continue;
       }
 
+      if (c.kind === KIND.INPUT) {
+        const isOn = c.state.value === LV.HIGH;
+        const isSel = c.id === selectedCompId || selectedCompIds.includes(c.id);
+
+        // Selection highlight (subtle glow instead of bulky box)
+        if (isSel) {
+          ctx.beginPath();
+          ctx.arc(c.x + 30, c.y + 30, 25, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(250, 217, 14, 0.1)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(250, 217, 14, 0.3)";
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        
+        // Switch track
+        ctx.fillStyle = isOn ? "#064e3b" : "#262626";
+        roundRect(ctx, c.x + 10, c.y + 20, 40, 20, 10);
+        ctx.fill();
+
+        // Switch knob
+        ctx.fillStyle = isOn ? "#10b981" : "#525252";
+        ctx.beginPath();
+        ctx.arc(isOn ? c.x + 40 : c.x + 20, c.y + 30, 8, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Value text
+        ctx.fillStyle = isOn ? "#10b981" : "#737373";
+        ctx.font = "bold 12px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(isOn ? "ON" : "OFF", c.x + 30, c.y + 55);
+        ctx.textAlign = "left";
+
+        // Draw pin
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        continue;
+      }
+
+      if (c.kind === KIND.BUTTON) {
+        const isPressed = !!c.state.pressed;
+        const isSel = c.id === selectedCompId || selectedCompIds.includes(c.id);
+
+        // Selection highlight
+        if (isSel) {
+          ctx.beginPath();
+          ctx.arc(c.x + 30, c.y + 30, 25, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(250, 217, 14, 0.1)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(250, 217, 14, 0.3)";
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        
+        // Button circle
+        ctx.fillStyle = isPressed ? "#10b981" : "#333";
+        ctx.beginPath();
+        ctx.arc(c.x + 30, c.y + 30, 15, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = isPressed ? "#065f46" : "#555";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = isPressed ? "#000" : "#888";
+        ctx.font = "bold 9px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText("PUSH", c.x + 30, c.y + 33);
+        ctx.textAlign = "left";
+
+        // Draw pin
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        continue;
+      }
+
       if (c.kind === KIND.PROBE) {
         ctx.fillStyle = "#121212";
         ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
@@ -596,32 +678,6 @@ export default function Canvas({
         ctx.fillStyle = "#e5e5e5";
         ctx.font = "14px system-ui";
         ctx.fillText(c.kind, c.x + 12, c.y + 22);
-
-        if (c.kind === KIND.INPUT) {
-          ctx.fillStyle = c.state.value === LV.HIGH ? "#10b981" : "#666";
-          ctx.beginPath();
-          ctx.arc(c.x + c.w - 18, c.y + 18, 8, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        if (c.kind === KIND.BUTTON) {
-          // const isPressed = c.state.value === LV.HIGH;
-          const isPressed = !!c.state.pressed;
-
-          ctx.fillStyle = isPressed ? "#10b981" : "#666";
-          ctx.beginPath();
-          ctx.arc(c.x + c.w - 18, c.y + 18, 8, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Show pressed state
-          ctx.fillStyle = isPressed ? "#10b981" : "#777";
-          ctx.font = "12px system-ui";
-          ctx.fillText(
-            isPressed ? "PRESSED" : "RELEASED",
-            c.x + 12,
-            c.y + c.h - 12
-          );
-        }
 
         if (c.kind === KIND.VCC) {
           ctx.fillStyle = "#ef4444"; // Red for VCC
@@ -1668,6 +1724,16 @@ function pinPosition(c, p) {
       const x = p.dir === "in" ? c.x : c.x + c.w;
       return { x, y: c.y + gap * (idx + 1) };
     }
+  }
+
+  // ✅ INPUT: Pin closer to switch
+  if (c.kind === KIND.INPUT) {
+    return { x: c.x + 54, y: c.y + 30 };
+  }
+
+  // ✅ BUTTON: Pin closer to circle
+  if (c.kind === KIND.BUTTON) {
+    return { x: c.x + 50, y: c.y + 30 };
   }
 
   // Logic gates have insets, adjust pin positions

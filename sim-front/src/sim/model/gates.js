@@ -23,7 +23,7 @@ export const makeComponent = (kind, x, y) => {
     case KIND.INPUT:
       return {
         ...base,
-        w: 110,
+        w: 60,
         h: 60,
         state: { value: LV.LOW },
         pins: [pin("OUT", "out")],
@@ -32,7 +32,7 @@ export const makeComponent = (kind, x, y) => {
     case KIND.BUTTON:
       return {
         ...base,
-        w: 110,
+        w: 60,
         h: 60,
         state: { pressed: false },
         pins: [pin("OUT", "out")],
