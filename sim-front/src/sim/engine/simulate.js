@@ -189,70 +189,165 @@ export const simulate = (circuit) => {
         setOut("Y", inv(xor2(a, b)));
       }
 
+
+      // =====================================================
+      // ✅ NEW: 555 Timer IC — Monostable (Phase 2.2)
+      // Digital approximation:
+      // - Falling edge on TRIG starts a HIGH pulse for pulseMs
+      // - RES LOW cancels pulse immediately
+      // - THR HIGH can also end pulse early (optional but useful)
+      // - OUT follows the monostable pulse
+      // - DIS is LOW when OUT LOW, otherwise X (floating)
+      // =====================================================
+      if (c.kind === KIND.TIMER_555) {
+        const now = Date.now();
+
+        const getIn = (name, fallback = LV.X) =>
+          inPins.find((p) => p.name === name)?.value ?? fallback;
+
+        const trig = getIn("TRIG", LV.X);
+        const thr = getIn("THR", LV.X);
+        const res = getIn("RES", LV.HIGH);
+
+        // pulse duration (ms)
+        const pulseMs = Math.max(1, Number(c.props?.pulseMs ?? 800)); // default 800ms
+
+        // persistent internal state
+        if (!c.state) c.state = {};
+        const lastTrig = c.state.lastTrig ?? LV.HIGH;   // for edge detect
+        let monoEndAt = c.state.monoEndAt ?? 0;        // timestamp when pulse ends
+
+        // Detect falling edge (HIGH -> LOW)
+        const fallingEdge = (lastTrig === LV.HIGH && trig === LV.LOW);
+
+        // Start pulse on falling edge (only once even if TRIG held low)
+        if (fallingEdge && res !== LV.LOW) {
+          monoEndAt = now + pulseMs;
+        }
+
+        // Cancel pulse if reset asserted
+        if (res === LV.LOW) {
+          monoEndAt = 0;
+        }
+
+        // Optional: end pulse early if THR goes HIGH
+        if (thr === LV.HIGH) {
+          monoEndAt = 0;
+        }
+
+        // OUT is HIGH while pulse active
+        const active = monoEndAt > now;
+        const outVal = active ? LV.HIGH : LV.LOW;
+
+        // Save internal state
+        c.state.lastTrig = trig;
+        c.state.monoEndAt = monoEndAt;
+        c.state.latch = outVal; // keep for debugging / future RC model
+
+        // Drive outputs
+        setOut("OUT", outVal);
+
+        // DISCHARGE transistor ON when OUT LOW
+        setOut("DIS", outVal === LV.LOW ? LV.LOW : LV.X);
+      }
+
+
+
       if (c.kind === "IC_CUSTOM") {
-          const icDef = circuit.icDefinitions?.find(d => d.id === c.icDefinitionId);
-          if (icDef) {
-              // 1. Initialize internal circuit if needed
-              if (!c.state.internalCircuit) {
-                  c.state.internalCircuit = {
-                      components: structuredClone(icDef.internalComponents),
-                      wires: structuredClone(icDef.internalWires),
-                      icDefinitions: circuit.icDefinitions // Pass definitions down
-                  };
-              }
-              const internalCircuit = c.state.internalCircuit;
-
-              // 2. Inject Inputs (External -> Internal)
-              // CRITICAL FIX: Update the STATE of INPUT/BUTTON components, not just pin values
-              // because simulate() will override pin values from component states
-              for (const inputDef of icDef.inputPins) {
-                  const extPin = inPins.find(p => p.name === inputDef.name);
-                  const found = getPin(internalCircuit, inputDef.internalPinId);
-
-                  if (extPin && found) {
-                      // If the internal pin belongs to an INPUT/BUTTON/VCC/GND, update its state
-                      if (found.comp.kind === KIND.INPUT || found.comp.kind === KIND.VCC ||
-                          found.comp.kind === KIND.GND || found.comp.kind === KIND.CLOCK) {
-                          found.comp.state.value = extPin.value;
-                      } else if (found.comp.kind === KIND.BUTTON) {
-                          // For BUTTON, set pressed state based on value
-                          found.comp.state.pressed = (extPin.value === LV.HIGH);
-                      } else {
-                          // For regular gates, set the pin value directly
-                          found.pin.value = extPin.value;
-                      }
-                  }
-              }
-
-              // 3. Simulate Internal Circuit
-              simulate(internalCircuit);
-
-              // 3.5. CRITICAL: Persist sequential state for internal components
-              // This ensures flip-flops/buffers inside ICs remember their state between ticks
-              for (const internalComp of internalCircuit.components) {
-                  // Persist flip-flop state (q and lastClk)
-                  if (internalComp.state._nextQ !== undefined) {
-                      internalComp.state.q = internalComp.state._nextQ;
-                      delete internalComp.state._nextQ;
-                  }
-                  if (internalComp.state._nextLastClk !== undefined) {
-                      internalComp.state.lastClk = internalComp.state._nextLastClk;
-                      delete internalComp.state._nextLastClk;
-                  }
-                  // BUFFER state is already persisted in the queue, but ensure it exists
-                  if (internalComp.kind === KIND.BUFFER && !Array.isArray(internalComp.state.queue)) {
-                      internalComp.state.queue = [];
-                  }
-              }
-
-              // 4. Extract Outputs (Internal -> External)
-              for (const outputDef of icDef.outputPins) {
-                  const found = getPin(internalCircuit, outputDef.internalPinId);
-                  if (found) {
-                      setOut(outputDef.name, found.pin.value);
-                  }
-              }
+        const icDef = circuit.icDefinitions?.find(d => d.id === c.icDefinitionId);
+        if (icDef) {
+          // 1. Initialize internal circuit if needed
+          if (!c.state.internalCircuit) {
+            c.state.internalCircuit = {
+              components: structuredClone(icDef.internalComponents),
+              wires: structuredClone(icDef.internalWires),
+              icDefinitions: circuit.icDefinitions // Pass definitions down
+            };
           }
+          const internalCircuit = c.state.internalCircuit;
+
+          // 2. Inject Inputs (External -> Internal)
+          // CRITICAL FIX: Update the STATE of INPUT/BUTTON components, not just pin values
+          // because simulate() will override pin values from component states
+          // for (const inputDef of icDef.inputPins) {
+          //   const extPin = inPins.find(p => p.name === inputDef.name);
+          //   // const found = getPin(internalCircuit, inputDef.internalPinId);
+
+
+
+          //   if (extPin && found) {
+          //     // If the internal pin belongs to an INPUT/BUTTON/VCC/GND, update its state
+          //     if (found.comp.kind === KIND.INPUT || found.comp.kind === KIND.VCC ||
+          //       found.comp.kind === KIND.GND || found.comp.kind === KIND.CLOCK) {
+          //       found.comp.state.value = extPin.value;
+          //     } else if (found.comp.kind === KIND.BUTTON) {
+          //       // For BUTTON, set pressed state based on value
+          //       found.comp.state.pressed = (extPin.value === LV.HIGH);
+          //     } else {
+          //       // For regular gates, set the pin value directly
+          //       found.pin.value = extPin.value;
+          //     }
+          //   }
+          // }
+
+          for (const inputDef of icDef.inputPins) {
+            const extPin = inPins.find(p => p.name === inputDef.name);
+
+            // ✅ NEW: support driving multiple internal pins from one external pin
+            const ids = inputDef.internalPinIds?.length
+              ? inputDef.internalPinIds
+              : [inputDef.internalPinId];
+
+            for (const internalId of ids) {
+              const found = getPin(internalCircuit, internalId);
+
+              if (extPin && found) {
+                // If the internal pin belongs to an INPUT/BUTTON/VCC/GND/CLOCK, update its state
+                if (
+                  found.comp.kind === KIND.INPUT ||
+                  found.comp.kind === KIND.VCC ||
+                  found.comp.kind === KIND.GND ||
+                  found.comp.kind === KIND.CLOCK
+                ) {
+                  found.comp.state.value = extPin.value;
+                } else if (found.comp.kind === KIND.BUTTON) {
+                  found.comp.state.pressed = (extPin.value === LV.HIGH);
+                } else {
+                  found.pin.value = extPin.value;
+                }
+              }
+            }
+          }
+
+          // 3. Simulate Internal Circuit
+          simulate(internalCircuit);
+
+          // 3.5. CRITICAL: Persist sequential state for internal components
+          // This ensures flip-flops/buffers inside ICs remember their state between ticks
+          for (const internalComp of internalCircuit.components) {
+            // Persist flip-flop state (q and lastClk)
+            if (internalComp.state._nextQ !== undefined) {
+              internalComp.state.q = internalComp.state._nextQ;
+              delete internalComp.state._nextQ;
+            }
+            if (internalComp.state._nextLastClk !== undefined) {
+              internalComp.state.lastClk = internalComp.state._nextLastClk;
+              delete internalComp.state._nextLastClk;
+            }
+            // BUFFER state is already persisted in the queue, but ensure it exists
+            if (internalComp.kind === KIND.BUFFER && !Array.isArray(internalComp.state.queue)) {
+              internalComp.state.queue = [];
+            }
+          }
+
+          // 4. Extract Outputs (Internal -> External)
+          for (const outputDef of icDef.outputPins) {
+            const found = getPin(internalCircuit, outputDef.internalPinId);
+            if (found) {
+              setOut(outputDef.name, found.pin.value);
+            }
+          }
+        }
       }
 
       if (c.kind === KIND.JUNCTION) {

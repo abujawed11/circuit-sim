@@ -122,6 +122,8 @@ export default function Editor() {
                     { kind: KIND.D_FF, label: "D Flip-Flop", short: "DFF" },
                     { kind: KIND.JK_FF, label: "JK Flip-Flop", short: "JK" },
                     { kind: KIND.T_FF, label: "T Flip-Flop", short: "TFF" },
+                    { kind: KIND.TIMER_555, label: "555 Timer", short: "555", hint: "8-pin timer IC" },
+
                 ],
             },
         ];
@@ -225,7 +227,7 @@ export default function Editor() {
                 delete nextState._nextLastClk;
                 hasUpdate = true;
             }
-            // ✅ NEW: persist BUFFER delay-line memory
+
             if (c.kind === KIND.BUFFER) {
                 // ensure queue exists
                 const q = Array.isArray(c.state.queue) ? c.state.queue : [];
@@ -233,6 +235,15 @@ export default function Editor() {
                 nextState.queue = q;
                 hasUpdate = true;
             }
+
+            // ✅ NEW: persist 555 monostable state
+            if (c.kind === KIND.TIMER_555) {
+                nextState.latch = c.state.latch;
+                nextState.lastTrig = c.state.lastTrig;
+                nextState.monoEndAt = c.state.monoEndAt;
+                hasUpdate = true;
+            }
+
 
             if (hasUpdate) {
                 changed = true;
@@ -436,14 +447,14 @@ export default function Editor() {
             const [baseKind, sizeStr] = kind.split("_");
             const size = parseInt(sizeStr);
             const comp = makeComponent(baseKind === "MUX" ? KIND.MUX : KIND.DEMUX, x, y);
-            
+
             comp.props = { size };
             comp.h = Math.max(80, size * 24 + 30);
-            
+
             // Regenerate pins for the specific size
             const selectCount = Math.log2(size);
             const pins = [];
-            
+
             if (baseKind === "MUX") {
                 for (let i = 0; i < size; i++) pins.push({ id: uid(), name: `I${i}`, dir: "in", value: LV.X });
                 for (let i = 0; i < selectCount; i++) pins.push({ id: uid(), name: `S${i}`, dir: "in", value: LV.X });
@@ -648,17 +659,17 @@ export default function Editor() {
         // If one end is outside, it's an interface wire (not part of internal structure usually, but we need to know connectivity).
         // For now, let's just save explicitly selected wires + selected components.
         // A more robust approach (Task 3.1) would be to find all wires strictly internal to the selected components.
-        
+
         const internalComponents = circuit.components.filter(c => selection.compIds.includes(c.id));
-        
+
         // Find wires where both ends are in the selection
         const internalWires = circuit.wires.filter(w => {
             const fromComp = circuit.components.find(c => c.pins.some(p => p.id === w.fromPinId));
             const toComp = circuit.components.find(c => c.pins.some(p => p.id === w.toPinId));
-            
+
             const fromSelected = selection.compIds.includes(fromComp?.id);
             const toSelected = selection.compIds.includes(toComp?.id);
-            
+
             return fromSelected && toSelected;
         });
 
@@ -922,7 +933,7 @@ export default function Editor() {
                     onSelectionChange={setCurrentSelection}
                 />
 
-                <ICCreationDialog 
+                <ICCreationDialog
                     isOpen={!!icCreationDialog?.open}
                     onClose={() => setIcCreationDialog(null)}
                     onCreate={handleCreateIC}

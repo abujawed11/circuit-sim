@@ -313,7 +313,7 @@ export default function Canvas({
           ctx.stroke();
           ctx.setLineDash([]);
         }
-        
+
         // Switch track
         ctx.fillStyle = isOn ? "#064e3b" : "#262626";
         roundRect(ctx, c.x + 10, c.y + 20, 40, 20, 10);
@@ -324,7 +324,7 @@ export default function Canvas({
         ctx.beginPath();
         ctx.arc(isOn ? c.x + 40 : c.x + 20, c.y + 30, 8, 0, Math.PI * 2);
         ctx.fill();
-        
+
         // Value text
         ctx.fillStyle = isOn ? "#10b981" : "#737373";
         ctx.font = "bold 12px monospace";
@@ -355,7 +355,7 @@ export default function Canvas({
           ctx.stroke();
           ctx.setLineDash([]);
         }
-        
+
         // Button circle
         ctx.fillStyle = isPressed ? "#10b981" : "#333";
         ctx.beginPath();
@@ -400,7 +400,7 @@ export default function Canvas({
         // Bulb Body (Glass)
         ctx.beginPath();
         ctx.arc(c.x + 30, c.y + 30, 15, 0, Math.PI * 2);
-        
+
         if (on) {
           // Glow effect
           ctx.shadowColor = "#00ff00";
@@ -547,7 +547,7 @@ export default function Canvas({
             ctx.strokeStyle = "#999";
             ctx.lineWidth = 1;
             ctx.stroke();
-            
+
             // Label
             ctx.fillStyle = "#aaa";
             ctx.fillText("CLK", c.x + 10, pos.y + 4);
@@ -585,53 +585,138 @@ export default function Canvas({
         continue;
       }
 
+// ✅ NEW: 555 Timer IC (clean style: dots only, bigger spacing)
+if (c.kind === KIND.TIMER_555) {
+  // chip body
+  ctx.fillStyle = "#0b0b0b";
+  ctx.strokeStyle = isSel ? "#FAD90E" : "#444";
+  ctx.lineWidth = isSel ? 3 : 2;
+  roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+  ctx.fill();
+  ctx.stroke();
+
+  // center text "555"
+  ctx.fillStyle = "#FAD90E";
+  ctx.font = "bold 44px system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("555", c.x + c.w / 2, c.y + c.h / 2);
+
+  // pins (dots + labels + pin numbers)
+  for (const p of c.pins) {
+    const pos = pinPosition(c, p);
+
+    const side = p.side || (p.dir === "in" ? "left" : "right");
+    const label = (p.label ?? p.name ?? "").toLowerCase();
+
+    // ✅ NEW: draw only dot (no lead lines)
+    pinDot(ctx, pos.x, pos.y, p.value);
+
+    // hover highlight
+    const isHovered = hoveredPin?.pin?.id === p.id;
+    if (isHovered) {
+      ctx.save();
+      ctx.globalAlpha = 0.35;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
+      ctx.fillStyle = "#60a5fa";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // pin number
+    ctx.fillStyle = "#cbd5e1";
+    ctx.font = "bold 13px system-ui";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    let nx = pos.x, ny = pos.y;
+    if (side === "left")   { nx = pos.x + 18; ny = pos.y - 10; }
+    if (side === "right")  { nx = pos.x - 18; ny = pos.y - 10; }
+    if (side === "top")    { nx = pos.x;      ny = pos.y + 18; }
+    if (side === "bottom") { nx = pos.x;      ny = pos.y - 18; }
+
+    ctx.fillText(String(p.num ?? ""), nx, ny);
+
+    // label text (place it slightly further from the dot)
+    ctx.fillStyle = "#9ca3af";
+    ctx.font = "13px system-ui";
+
+    if (side === "left") {
+      ctx.textAlign = "left";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(label, pos.x + 26, pos.y + 5);
+    } else if (side === "right") {
+      ctx.textAlign = "right";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(label, pos.x - 26, pos.y + 5);
+    } else if (side === "top") {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(label, pos.x, pos.y + 44);
+    } else if (side === "bottom") {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(label, pos.x, pos.y - 30);
+    }
+  }
+
+  // reset text settings
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  continue;
+}
+
+
+
+
       // ✅ NEW: Draw Custom ICs
       if (c.kind === "IC_CUSTOM") {
-          const icDef = circuit.icDefinitions?.find(d => d.id === c.icDefinitionId);
-          const name = icDef ? icDef.name : "UNKNOWN_IC";
-          
-          // Draw chip body
-          ctx.fillStyle = "#1a1a2e"; // Dark blue/slate for ICs
-          ctx.strokeStyle = isSel ? "#FAD90E" : "#555";
-          ctx.lineWidth = isSel ? 3 : 2;
-          roundRect(ctx, c.x, c.y, c.w, c.h, 8);
-          ctx.fill();
-          ctx.stroke();
+        const icDef = circuit.icDefinitions?.find(d => d.id === c.icDefinitionId);
+        const name = icDef ? icDef.name : "UNKNOWN_IC";
 
-          // Draw IC name
-          ctx.fillStyle = "#fff";
-          ctx.font = "bold 14px monospace";
-          ctx.textAlign = "center";
-          ctx.fillText(name, c.x + c.w / 2, c.y + 20);
-          ctx.textAlign = "left";
+        // Draw chip body
+        ctx.fillStyle = "#1a1a2e"; // Dark blue/slate for ICs
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#555";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 8);
+        ctx.fill();
+        ctx.stroke();
 
-          // Draw pins with labels
-          ctx.font = "10px monospace";
-          for(const p of c.pins) {
-              const pos = pinPosition(c, p);
-              
-              // Pin label
-              ctx.fillStyle = "#bbb";
-              const offset = p.dir === "in" ? 8 : -8;
-              ctx.textAlign = p.dir === "in" ? "left" : "right";
-              ctx.fillText(p.name, pos.x + offset, pos.y + 4);
-              
-              // Hover highlight
-              const isHovered = hoveredPin?.pin?.id === p.id;
-              if (isHovered) {
-                  ctx.save();
-                  ctx.globalAlpha = 0.5;
-                  ctx.beginPath();
-                  ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-                  ctx.fillStyle = "#60a5fa";
-                  ctx.fill();
-                  ctx.restore();
-              }
-              
-              pinDot(ctx, pos.x, pos.y, p.value);
+        // Draw IC name
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 14px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText(name, c.x + c.w / 2, c.y + 20);
+        ctx.textAlign = "left";
+
+        // Draw pins with labels
+        ctx.font = "10px monospace";
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+
+          // Pin label
+          ctx.fillStyle = "#bbb";
+          const offset = p.dir === "in" ? 8 : -8;
+          ctx.textAlign = p.dir === "in" ? "left" : "right";
+          ctx.fillText(p.name, pos.x + offset, pos.y + 4);
+
+          // Hover highlight
+          const isHovered = hoveredPin?.pin?.id === p.id;
+          if (isHovered) {
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+            ctx.fillStyle = "#60a5fa";
+            ctx.fill();
+            ctx.restore();
           }
-          ctx.textAlign = "left"; // reset
-          continue;
+
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        ctx.textAlign = "left"; // reset
+        continue;
       }
 
       if (c.kind === KIND.MUX || c.kind === KIND.DEMUX) {
@@ -657,12 +742,12 @@ export default function Canvas({
         ctx.font = "10px system-ui";
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
-          
+
           if (p.name.startsWith("S")) {
             // Selectors at bottom: draw label above pin
             ctx.fillStyle = "#aaa";
             ctx.textAlign = "center";
-            ctx.textBaseline = "bottom"; 
+            ctx.textBaseline = "bottom";
             ctx.fillText(p.name, pos.x, pos.y - 4);
             ctx.textBaseline = "alphabetic"; // Reset
           } else {
@@ -1853,6 +1938,29 @@ function pinPosition(c, p) {
     }
   }
 
+  // ✅ NEW: explicit pin side support (top/bottom/left/right)
+  if (p.side) {
+    const group = c.pins.filter(pp => (pp.side || null) === p.side);
+    const idx = group.findIndex(pp => pp.id === p.id);
+    const count = group.length;
+
+    const pad = 18; // distance from corner
+    const t = (idx + 1) / (count + 1);
+
+    if (p.side === "left") {
+      return { x: c.x, y: c.y + pad + (c.h - pad * 2) * t };
+    }
+    if (p.side === "right") {
+      return { x: c.x + c.w, y: c.y + pad + (c.h - pad * 2) * t };
+    }
+    if (p.side === "top") {
+      return { x: c.x + pad + (c.w - pad * 2) * t, y: c.y };
+    }
+    if (p.side === "bottom") {
+      return { x: c.x + pad + (c.w - pad * 2) * t, y: c.y + c.h };
+    }
+  }
+
   // Non-logic gates (INPUT, LED) use box edges
   if (p.dir === "out") {
     const outs = c.pins.filter((pp) => pp.dir === "out");
@@ -1864,10 +1972,10 @@ function pinPosition(c, p) {
   }
 
   let ins = c.pins.filter((pp) => pp.dir === "in");
-  
+
   // ✅ Fix for Flip-Flops: Exclude special pins from side distribution
   if (c.kind === KIND.D_FF || c.kind === KIND.JK_FF || c.kind === KIND.SR_LATCH || c.kind === KIND.T_FF) {
-      ins = ins.filter(pp => pp.name !== "PRE" && pp.name !== "CLR");
+    ins = ins.filter(pp => pp.name !== "PRE" && pp.name !== "CLR");
   }
 
   const idx = ins.findIndex((pp) => pp.id === p.id);

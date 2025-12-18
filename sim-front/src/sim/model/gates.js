@@ -1,11 +1,20 @@
 import { KIND, LV, uid } from "./types";
 
-export const pin = (name, dir) => ({
+// export const pin = (name, dir) => ({
+//   id: uid(),
+//   name,
+//   dir, // "in" | "out"
+//   value: LV.X,
+// });
+
+export const pin = (name, dir, extra = {}) => ({
   id: uid(),
   name,
   dir, // "in" | "out"
   value: LV.X,
+  ...extra, // ✅ allow side, num, label, etc.
 });
+
 
 export const makeComponent = (kind, x, y) => {
   const base = {
@@ -214,6 +223,32 @@ export const makeComponent = (kind, x, y) => {
         pins,
       };
     }
+
+    case KIND.TIMER_555:
+      return {
+        ...base,
+        w: 240,
+        h: 180,
+        // Pins match your screenshot layout
+        pins: [
+          // LEFT side
+          pin("DIS", "out", { side: "left", num: 7, label: "dis" }),
+          pin("THR", "in", { side: "left", num: 6, label: "thr" }),
+          pin("TRIG", "in", { side: "left", num: 2, label: "trig" }),
+
+          // TOP side
+          pin("RES", "in", { side: "top", num: 4, label: "res" }),
+          pin("VCC", "in", { side: "top", num: 8, label: "vcc" }),
+
+          // RIGHT side
+          pin("OUT", "out", { side: "right", num: 3, label: "out" }),
+          pin("CTRL", "in", { side: "right", num: 5, label: "ctrl" }),
+
+          // BOTTOM side
+          pin("GND", "in", { side: "bottom", num: 1, label: "gnd" }),
+        ],
+      };
+
 
     default:
       return base;
