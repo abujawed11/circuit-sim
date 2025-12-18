@@ -60,7 +60,7 @@ export default function ICCreationDialog({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="w-[500px] bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="w-125 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
                 
                 {/* Header */}
                 <div className="p-4 border-b border-neutral-800 flex justify-between items-center">
@@ -80,6 +80,7 @@ export default function ICCreationDialog({
                             type="text"
                             value={icName}
                             onChange={e => setIcName(e.target.value)}
+                            onKeyDown={e => e.stopPropagation()}
                             placeholder="e.g. HALF_ADDER"
                             className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-neutral-200 focus:outline-none focus:border-yellow-500"
                             autoFocus
@@ -105,9 +106,10 @@ export default function ICCreationDialog({
                                         type="text"
                                         value={pin.name}
                                         onChange={e => updatePinName(pin.id, e.target.value)}
+                                        onKeyDown={e => e.stopPropagation()}
                                         className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm text-neutral-300 focus:border-yellow-500/50 outline-none"
                                     />
-                                    <div className="text-[10px] text-neutral-600 truncate max-w-[100px]" title={pin.sourceInfo}>
+                                    <div className="text-[10px] text-neutral-600 truncate max-w-25" title={pin.sourceInfo}>
                                         {pin.sourceInfo}
                                     </div>
                                 </div>
@@ -134,9 +136,10 @@ export default function ICCreationDialog({
                                         type="text"
                                         value={pin.name}
                                         onChange={e => updatePinName(pin.id, e.target.value)}
+                                        onKeyDown={e => e.stopPropagation()}
                                         className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-2 py-1 text-sm text-neutral-300 focus:border-yellow-500/50 outline-none"
                                     />
-                                    <div className="text-[10px] text-neutral-600 truncate max-w-[100px]" title={pin.sourceInfo}>
+                                    <div className="text-[10px] text-neutral-600 truncate max-w-25" title={pin.sourceInfo}>
                                         {pin.sourceInfo}
                                     </div>
                                 </div>
