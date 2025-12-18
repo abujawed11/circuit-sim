@@ -58,19 +58,67 @@ export default function ICCreationDialog({
         setPins(pins.map(p => p.id === id ? { ...p, name: newName } : p));
     };
 
+    // Calculate statistics
+    const stats = calculateStats(selection, circuit);
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="w-125 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
-                
+        <div className="fixed inset-0 z-50 flex pointer-events-none">
+            {/* Semi-transparent overlay - click to close */}
+            <div
+                className="flex-1 bg-black/20 backdrop-blur-[2px] pointer-events-auto"
+                onClick={onClose}
+            />
+
+            {/* Side Panel */}
+            <div className="w-112.5 bg-neutral-900 border-l border-neutral-800 shadow-2xl flex flex-col h-full pointer-events-auto transition-transform duration-300 ease-out">
+
                 {/* Header */}
-                <div className="p-4 border-b border-neutral-800 flex justify-between items-center">
-                    <h2 className="text-lg font-semibold text-neutral-100">Create New IC</h2>
-                    <button onClick={onClose} className="text-neutral-500 hover:text-white">✕</button>
+                <div className="p-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-950/80">
+                    <div>
+                        <h2 className="text-lg font-semibold text-neutral-100">Create Custom IC</h2>
+                        <p className="text-xs text-neutral-500 mt-0.5">Circuit remains visible while configuring</p>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="text-neutral-500 hover:text-white transition w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-800"
+                    >
+                        ✕
+                    </button>
                 </div>
 
                 {/* Body */}
-                <div className="p-6 overflow-y-auto space-y-6">
-                    
+                <div className="p-4 overflow-y-auto flex-1 space-y-4">
+
+                    {/* IC Statistics */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2">
+                            <div className="text-neutral-500 text-[10px] uppercase tracking-wide">Components</div>
+                            <div className="text-lg font-bold text-neutral-200">{stats.gateCount}</div>
+                        </div>
+                        <div className="bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2">
+                            <div className="text-neutral-500 text-[10px] uppercase tracking-wide">Wires</div>
+                            <div className="text-lg font-bold text-neutral-200">{stats.wireCount}</div>
+                        </div>
+                        <div className="col-span-2 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2">
+                            <div className="text-neutral-500 text-[10px] uppercase tracking-wide">Circuit Type</div>
+                            <div className="flex items-center gap-2 mt-1">
+                                <div className={[
+                                    "text-sm font-semibold px-2 py-0.5 rounded",
+                                    stats.isSequential
+                                        ? "bg-purple-900/30 text-purple-400 border border-purple-900/50"
+                                        : "bg-blue-900/30 text-blue-400 border border-blue-900/50"
+                                ].join(" ")}>
+                                    {stats.isSequential ? "Sequential" : "Combinational"}
+                                </div>
+                                {stats.isSequential && (
+                                    <div className="text-[10px] text-neutral-600">
+                                        Contains flip-flops or latches
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Name Input */}
                     <div>
                         <label className="block text-xs font-semibold text-neutral-400 mb-1 uppercase tracking-wider">
@@ -241,32 +289,29 @@ function detectInterfacePins(selection, circuit) {
         const comp = circuit.components.find(c => c.id === compId);
         if (!comp) return;
 
-        // Input Components -> Input Pins
-        if (comp.kind === "INPUT" || comp.kind === "BUTTON") {
+        // Input Components -> Input Pins (including CLOCK)
+        if (comp.kind === "INPUT" || comp.kind === "BUTTON" || comp.kind === "CLOCK") {
             const outPin = comp.pins.find(p => p.dir === "out");
             if (outPin && !processedCompIds.has(compId)) {
                 processedCompIds.add(compId);
-                
-                // Only add if not already captured by boundary logic (avoid duplicates)
-                // Actually, if we selected the Input, the boundary logic above (Inside->Outside)
-                // might have caught the wire going from this Input to another Selected Gate?
-                // No, if both are selected, it's considered Internal.
-                // So we MUST add it here.
-                
-                // Check if this pin ID was already added? 
-                // The pin ID of the INPUT component is what we want to expose?
-                // Or do we create a logical mapping? 
-                // For now, let's use the Component ID as the reference for the "Pin" 
-                // but the UI needs a pin ID. Let's use the component's output pin ID.
-                
+
                 if (!processedPins.has(outPin.id)) {
                     processedPins.add(outPin.id);
+
+                    // Smart naming for CLOCK components
+                    let pinName = "IN";
+                    if (comp.kind === "CLOCK") {
+                        pinName = "CLK";
+                    } else if (comp.label) {
+                        pinName = comp.label;
+                    }
+
                     interfacePins.push({
                         id: outPin.id,
-                        name: comp.label || "IN", // Use label if available (though currently components don't have user labels, use default)
+                        name: pinName,
                         dir: "in",
                         sourceInfo: `From ${comp.kind} (Selected)`,
-                        isExplicit: true // Flag to indicate this came from a selected component
+                        isExplicit: true
                     });
                 }
             }
@@ -316,4 +361,40 @@ function detectInterfacePins(selection, circuit) {
         if (a.dir === b.dir) return 0;
         return a.dir === "in" ? -1 : 1;
     });
+}
+
+// ----------------------------------------------------------------------
+// Helper: Calculate IC Statistics
+// ----------------------------------------------------------------------
+function calculateStats(selection, circuit) {
+    if (!selection || !circuit) {
+        return { gateCount: 0, wireCount: 0, isSequential: false };
+    }
+
+    const { compIds = [] } = selection;
+
+    // Count components
+    const gateCount = compIds.length;
+
+    // Count internal wires (both ends selected)
+    const wireCount = circuit.wires.filter(w => {
+        const fromComp = circuit.components.find(c => c.pins.some(p => p.id === w.fromPinId));
+        const toComp = circuit.components.find(c => c.pins.some(p => p.id === w.toPinId));
+
+        const fromSelected = compIds.includes(fromComp?.id);
+        const toSelected = compIds.includes(toComp?.id);
+
+        return fromSelected && toSelected;
+    }).length;
+
+    // Detect if circuit contains sequential elements
+    const SEQUENTIAL_KINDS = ["SR_LATCH", "D_FF", "JK_FF", "T_FF"];
+    const selectedComponents = circuit.components.filter(c => compIds.includes(c.id));
+    const isSequential = selectedComponents.some(c => SEQUENTIAL_KINDS.includes(c.kind));
+
+    return {
+        gateCount,
+        wireCount,
+        isSequential
+    };
 }

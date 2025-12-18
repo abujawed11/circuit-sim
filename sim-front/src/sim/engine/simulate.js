@@ -223,6 +223,24 @@ export const simulate = (circuit) => {
               // 3. Simulate Internal Circuit
               simulate(internalCircuit);
 
+              // 3.5. CRITICAL: Persist sequential state for internal components
+              // This ensures flip-flops/buffers inside ICs remember their state between ticks
+              for (const internalComp of internalCircuit.components) {
+                  // Persist flip-flop state (q and lastClk)
+                  if (internalComp.state._nextQ !== undefined) {
+                      internalComp.state.q = internalComp.state._nextQ;
+                      delete internalComp.state._nextQ;
+                  }
+                  if (internalComp.state._nextLastClk !== undefined) {
+                      internalComp.state.lastClk = internalComp.state._nextLastClk;
+                      delete internalComp.state._nextLastClk;
+                  }
+                  // BUFFER state is already persisted in the queue, but ensure it exists
+                  if (internalComp.kind === KIND.BUFFER && !Array.isArray(internalComp.state.queue)) {
+                      internalComp.state.queue = [];
+                  }
+              }
+
               // 4. Extract Outputs (Internal -> External)
               for (const outputDef of icDef.outputPins) {
                   const found = getPin(internalCircuit, outputDef.internalPinId);

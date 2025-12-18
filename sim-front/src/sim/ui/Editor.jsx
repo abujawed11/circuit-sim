@@ -264,10 +264,40 @@ export default function Editor() {
                         ? true
                         : pq && nq && pq.length === nq.length && pq.every((v, i) => v === nq[i]);
 
-                if (sameQ && sameLastClk && sameQueue) return pc;
+                // CRITICAL: For IC_CUSTOM components, also compare internal circuit state
+                let sameInternalState = true;
+                if (pc.kind === "IC_CUSTOM" && ps.internalCircuit && ns.internalCircuit) {
+                    // Deep compare internal component states
+                    const prevInternal = ps.internalCircuit.components || [];
+                    const nextInternal = ns.internalCircuit.components || [];
+
+                    if (prevInternal.length === nextInternal.length) {
+                        for (let i = 0; i < prevInternal.length; i++) {
+                            const pComp = prevInternal[i];
+                            const nComp = nextInternal[i];
+
+                            if (pComp.state?.q !== nComp.state?.q ||
+                                pComp.state?.lastClk !== nComp.state?.lastClk) {
+                                sameInternalState = false;
+                                break;
+                            }
+                        }
+                    } else {
+                        sameInternalState = false;
+                    }
+                }
+
+                if (sameQ && sameLastClk && sameQueue && sameInternalState) return pc;
 
                 anyRealChange = true;
-                return { ...pc, state: { ...pc.state, ...ns } };
+
+                // Merge state, including internal circuit for ICs
+                const mergedState = { ...pc.state, ...ns };
+                if (pc.kind === "IC_CUSTOM" && ns.internalCircuit) {
+                    mergedState.internalCircuit = ns.internalCircuit;
+                }
+
+                return { ...pc, state: mergedState };
             });
 
             return anyRealChange ? { ...prev, components: merged } : prev;
