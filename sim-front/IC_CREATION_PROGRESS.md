@@ -1,7 +1,7 @@
 # IC Creation - Implementation Progress
 
 **Last Updated:** 2025-12-18
-**Status:** 🟡 In Progress (Foundation Complete, Phase 1 & 2 Complete)
+**Status:** ✅ Complete (Professional UX - Option 1 Implemented)
 
 ---
 
@@ -218,12 +218,39 @@ Modified `simulate.js` to handle `IC_CUSTOM` components. It instantiates the int
 
 ## 🎯 Status: COMPLETE
 
-The Hierarchical IC Creation feature is now fully implemented. Users can:
-1.  Select a sub-circuit.
-2.  Create an IC from it (naming inputs/outputs).
-3.  See the IC in the "Custom ICs" palette.
-4.  Drag and drop the IC onto the canvas.
-5.  Wire it up and simulate it (it behaves correctly).
+The Hierarchical IC Creation feature is now fully implemented with **Professional UX (Option 1)**. Users can:
+1.  Select ONLY the logic gates (NO INPUT/LED components needed)
+2.  Click "Create IC from Selection"
+3.  Dialog automatically detects boundary pins (wires crossing selection)
+4.  User classifies each pin as Input/Output with IN/OUT toggle buttons
+5.  User names pins (auto-naming: I0, I1, O0, O1...)
+6.  IC appears in "Custom ICs" palette
+7.  Drag and drop IC onto canvas
+8.  Wire and simulate - works correctly!
+
+## ✨ Professional UX Features (Dec 2025)
+
+### **Two-Phase Pin Classification**
+- **No INPUT/LED pollution**: Users select only actual logic gates
+- **Boundary detection**: Automatically finds pins where wires cross selection boundary
+- **Manual classification**: Users explicitly mark each pin as Input or Output
+- **Professional naming**: I0, I1, I2... for inputs, O0, O1... for outputs
+- **Auto-name button**: One-click to rename all pins with standard convention
+- **Visual feedback**:
+  - Blue buttons for Inputs
+  - Green buttons for Outputs
+  - Amber warning for unclassified pins
+  - Summary cards showing counts
+- **Disabled create button** until all pins are classified
+
+### **Keyboard Event Fix**
+- Fixed: Backspace in input fields no longer deletes canvas components
+- All input fields have `e.stopPropagation()` to prevent event bubbling
+
+### **Clean Separation**
+- Internal circuit contains ONLY logic gates (no I/O components)
+- Interface pins are boundary-detected, not component-based
+- Matches professional tools (Vivado, Quartus, Logisim)
 
 ---
 

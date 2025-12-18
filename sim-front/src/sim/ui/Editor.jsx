@@ -573,7 +573,7 @@ export default function Editor() {
         const { name, pins } = data;
         const { selection } = icCreationDialog;
 
-        // 1. Separate pins
+        // 1. Separate pins (already classified by user in dialog)
         const inputPins = pins
             .filter(p => p.dir === "in")
             .map((p, i) => ({ name: p.name, order: i, internalPinId: p.id }));
@@ -582,23 +582,17 @@ export default function Editor() {
             .filter(p => p.dir === "out")
             .map((p, i) => ({ name: p.name, order: i, internalPinId: p.id }));
 
-        // 2. Extract internal circuit
-        // We only save the components that were selected.
-        // Wires are tricky: if both ends are selected, it's internal.
-        // If one end is outside, it's an interface wire (not part of internal structure usually, but we need to know connectivity).
-        // For now, let's just save explicitly selected wires + selected components.
-        // A more robust approach (Task 3.1) would be to find all wires strictly internal to the selected components.
-        
+        // 2. Extract internal circuit (only selected components and internal wires)
         const internalComponents = circuit.components.filter(c => selection.compIds.includes(c.id));
-        
-        // Find wires where both ends are in the selection
+
+        // Find wires where BOTH ends are within the selection (internal wiring only)
         const internalWires = circuit.wires.filter(w => {
             const fromComp = circuit.components.find(c => c.pins.some(p => p.id === w.fromPinId));
             const toComp = circuit.components.find(c => c.pins.some(p => p.id === w.toPinId));
-            
+
             const fromSelected = selection.compIds.includes(fromComp?.id);
             const toSelected = selection.compIds.includes(toComp?.id);
-            
+
             return fromSelected && toSelected;
         });
 
