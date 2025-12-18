@@ -431,6 +431,55 @@ export default function Canvas({
         continue;
       }
 
+      // ✅ NEW: Draw Custom ICs
+      if (c.kind === "IC_CUSTOM") {
+          const icDef = circuit.icDefinitions?.find(d => d.id === c.icDefinitionId);
+          const name = icDef ? icDef.name : "UNKNOWN_IC";
+          
+          // Draw chip body
+          ctx.fillStyle = "#1a1a2e"; // Dark blue/slate for ICs
+          ctx.strokeStyle = isSel ? "#FAD90E" : "#555";
+          ctx.lineWidth = isSel ? 3 : 2;
+          roundRect(ctx, c.x, c.y, c.w, c.h, 8);
+          ctx.fill();
+          ctx.stroke();
+
+          // Draw IC name
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 14px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(name, c.x + c.w / 2, c.y + 20);
+          ctx.textAlign = "left";
+
+          // Draw pins with labels
+          ctx.font = "10px monospace";
+          for(const p of c.pins) {
+              const pos = pinPosition(c, p);
+              
+              // Pin label
+              ctx.fillStyle = "#bbb";
+              const offset = p.dir === "in" ? 8 : -8;
+              ctx.textAlign = p.dir === "in" ? "left" : "right";
+              ctx.fillText(p.name, pos.x + offset, pos.y + 4);
+              
+              // Hover highlight
+              const isHovered = hoveredPin?.pin?.id === p.id;
+              if (isHovered) {
+                  ctx.save();
+                  ctx.globalAlpha = 0.5;
+                  ctx.beginPath();
+                  ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+                  ctx.fillStyle = "#60a5fa";
+                  ctx.fill();
+                  ctx.restore();
+              }
+              
+              pinDot(ctx, pos.x, pos.y, p.value);
+          }
+          ctx.textAlign = "left"; // reset
+          continue;
+      }
+
       // Draw logic gates with proper shapes
       const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR, KIND.NAND, KIND.NOR, KIND.XNOR].includes(c.kind);
 

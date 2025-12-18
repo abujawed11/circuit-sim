@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { KIND, makeEmptyCircuit, LV, uid } from "../model/types";
+import { KIND, makeEmptyCircuit, LV, uid, makeICDefinition } from "../model/types";
 import { makeComponent } from "../model/gates";
 import Canvas from "./Canvas";
+import ICCreationDialog from "./ICCreationDialog";
 import { simulate } from "../engine/simulate";
 
 const palette = [
@@ -118,6 +119,21 @@ export default function Editor() {
             },
         ];
 
+        // ✅ Add Custom ICs Group
+        if (circuit.icDefinitions && circuit.icDefinitions.length > 0) {
+            groups.push({
+                title: "Custom ICs",
+                items: circuit.icDefinitions.map((ic) => ({
+                    kind: `IC_${ic.id}`, // Dynamic KIND based on IC ID
+                    label: ic.name,
+                    short: "IC",
+                    hint: `${ic.inputPins.length} IN → ${ic.outputPins.length} OUT`,
+                    isCustomIC: true,
+                    icDefId: ic.id,
+                })),
+            });
+        }
+
         const q = paletteQuery.trim().toLowerCase();
         if (!q) return groups;
 
@@ -127,7 +143,7 @@ export default function Editor() {
                 items: g.items.filter((it) => it.label.toLowerCase().includes(q)),
             }))
             .filter((g) => g.items.length > 0);
-    }, [paletteQuery]);
+    }, [paletteQuery, circuit.icDefinitions]);
 
     const filteredGroups = groupedPalette;
 
@@ -351,7 +367,38 @@ export default function Editor() {
 
     const addAt = (x, y, kind) => {
         const next = structuredClone(circuit);
-        next.components.push(makeComponent(kind, x, y));
+
+        if (kind.startsWith("IC_")) {
+            const icDefId = kind.replace("IC_", "");
+            const icDef = next.icDefinitions.find(d => d.id === icDefId);
+
+            if (icDef) {
+                // Calculate dynamic height based on pins
+                const maxPins = Math.max(icDef.inputPins.length, icDef.outputPins.length);
+                const h = Math.max(80, maxPins * 20 + 40); // Minimal height or dynamic
+
+                const newComp = {
+                    id: uid(),
+                    kind: "IC_CUSTOM",
+                    icDefinitionId: icDefId,
+                    x,
+                    y,
+                    w: 120, // Standard width
+                    h: h,
+                    pins: [
+                        ...icDef.inputPins.map(p => ({ id: uid(), name: p.name, dir: "in", value: LV.X })),
+                        ...icDef.outputPins.map(p => ({ id: uid(), name: p.name, dir: "out", value: LV.X }))
+                    ],
+                    state: {
+                        internalCircuit: null // Will be populated by simulator
+                    }
+                };
+                next.components.push(newComp);
+            }
+        } else {
+            next.components.push(makeComponent(kind, x, y));
+        }
+
         updateCircuit(next);
     };
 
@@ -520,50 +567,73 @@ export default function Editor() {
         addAt(x - 60, y - 35, kind);
     };
 
+    const handleCreateIC = (data) => {
+        if (!icCreationDialog?.selection) return;
+
+        const { name, pins } = data;
+        const { selection } = icCreationDialog;
+
+        // 1. Separate pins
+        const inputPins = pins
+            .filter(p => p.dir === "in")
+            .map((p, i) => ({ name: p.name, order: i, internalPinId: p.id }));
+
+        const outputPins = pins
+            .filter(p => p.dir === "out")
+            .map((p, i) => ({ name: p.name, order: i, internalPinId: p.id }));
+
+        // 2. Extract internal circuit
+        // We only save the components that were selected.
+        // Wires are tricky: if both ends are selected, it's internal.
+        // If one end is outside, it's an interface wire (not part of internal structure usually, but we need to know connectivity).
+        // For now, let's just save explicitly selected wires + selected components.
+        // A more robust approach (Task 3.1) would be to find all wires strictly internal to the selected components.
+        
+        const internalComponents = circuit.components.filter(c => selection.compIds.includes(c.id));
+        
+        // Find wires where both ends are in the selection
+        const internalWires = circuit.wires.filter(w => {
+            const fromComp = circuit.components.find(c => c.pins.some(p => p.id === w.fromPinId));
+            const toComp = circuit.components.find(c => c.pins.some(p => p.id === w.toPinId));
+            
+            const fromSelected = selection.compIds.includes(fromComp?.id);
+            const toSelected = selection.compIds.includes(toComp?.id);
+            
+            return fromSelected && toSelected;
+        });
+
+        // 3. Create Definition
+        const icDef = makeICDefinition(
+            name,
+            inputPins,
+            outputPins,
+            { components: internalComponents, wires: internalWires }
+        );
+
+        // 4. Save to circuit
+        const next = structuredClone(circuit);
+        if (!next.icDefinitions) next.icDefinitions = [];
+        next.icDefinitions.push(icDef);
+        updateCircuit(next);
+
+        setIcCreationDialog(null);
+    };
+
+    const deleteIC = (icId, e) => {
+        e.stopPropagation();
+        if (!confirm("Are you sure you want to delete this IC? Existing instances on the canvas will stop working.")) return;
+
+        const next = structuredClone(circuit);
+        next.icDefinitions = next.icDefinitions.filter(d => d.id !== icId);
+        updateCircuit(next);
+
+        if (selectedKind === `IC_${icId}`) {
+            setSelectedKind(KIND.AND);
+        }
+    };
+
     return (
         <div className="h-screen w-screen bg-neutral-950 text-neutral-100 flex">
-            {/* Left Palette */}
-            {/* <div className="w-64 border-r border-neutral-800 p-4">
-                <div className="text-lg font-semibold">Circuit Sim</div>
-                <div className="text-xs text-neutral-400 mt-1">Digital logic v1</div>
-
-                <div className="mt-4 space-y-2">
-                    {palette.map((p) => (
-                        <button
-                            key={p.kind}
-                            draggable
-                            onDragStart={(e) => {
-                                e.dataTransfer.setData("text/plain", p.kind);
-                            }}
-                            onClick={() => setSelectedKind(p.kind)}
-                            className={[
-                                "w-full rounded-lg px-3 py-2 text-left border",
-                                selectedKind === p.kind
-                                    ? "bg-yellow-400 text-black border-yellow-300"
-                                    : "bg-neutral-900 border-neutral-800 hover:bg-neutral-800",
-                            ].join(" ")}
-                        >
-                            {p.label}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="mt-6 text-xs text-neutral-400 leading-relaxed">
-                    Click canvas to place component. <br />
-                    Click OUT pin → click IN pin to wire. <br />
-                    Click empty space to cancel wiring.
-                </div>
-                <div className="mt-auto">
-                    <button
-                        onClick={undo}
-                        className="w-full rounded-lg px-3 py-2 text-left border bg-neutral-900 border-neutral-800 hover:bg-neutral-800"
-                    >
-                        Undo
-                    </button>
-                </div>
-            </div> */}
-
-
             {/* Left Palette */}
             <div className="w-72 border-r border-neutral-800 bg-neutral-950/60 backdrop-blur flex flex-col">
                 {/* Header */}
@@ -609,13 +679,13 @@ export default function Editor() {
                                 {g.items.map((p) => {
                                     const active = selectedKind === p.kind;
                                     return (
-                                        <button
+                                        <div
                                             key={p.kind}
                                             draggable
                                             onDragStart={(e) => e.dataTransfer.setData("text/plain", p.kind)}
                                             onClick={() => setSelectedKind(p.kind)}
                                             className={[
-                                                "group rounded-xl border px-3 py-2 text-left transition",
+                                                "group relative rounded-xl border px-3 py-2 text-left transition cursor-pointer select-none",
                                                 "bg-neutral-900/60 border-neutral-800 hover:bg-neutral-800/70 hover:border-neutral-700",
                                                 active
                                                     ? "ring-2 ring-yellow-400/25 border-yellow-400/50 bg-yellow-400 text-black"
@@ -644,7 +714,17 @@ export default function Editor() {
                                                     {p.hint}
                                                 </div>
                                             )}
-                                        </button>
+
+                                            {p.isCustomIC && (
+                                                <button
+                                                    onClick={(e) => deleteIC(p.icDefId, e)}
+                                                    className="absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full bg-red-500/90 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-sm"
+                                                    title="Delete IC"
+                                                >
+                                                    ✕
+                                                </button>
+                                            )}
+                                        </div>
                                     );
                                 })}
                             </div>
@@ -780,6 +860,14 @@ export default function Editor() {
                     onSetComponentValue={setComponentValue}
                     onSetButtonPressed={setButtonPressed}
                     onSelectionChange={setCurrentSelection}
+                />
+
+                <ICCreationDialog 
+                    isOpen={!!icCreationDialog?.open}
+                    onClose={() => setIcCreationDialog(null)}
+                    onCreate={handleCreateIC}
+                    selection={icCreationDialog?.selection}
+                    circuit={circuit}
                 />
 
             </div>

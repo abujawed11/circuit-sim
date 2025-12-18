@@ -185,6 +185,54 @@ export const simulate = (circuit) => {
         setOut("Y", inv(xor2(a, b)));
       }
 
+      if (c.kind === "IC_CUSTOM") {
+          const icDef = circuit.icDefinitions?.find(d => d.id === c.icDefinitionId);
+          if (icDef) {
+              // 1. Initialize internal circuit if needed
+              if (!c.state.internalCircuit) {
+                  c.state.internalCircuit = {
+                      components: structuredClone(icDef.internalComponents),
+                      wires: structuredClone(icDef.internalWires),
+                      icDefinitions: circuit.icDefinitions // Pass definitions down
+                  };
+              }
+              const internalCircuit = c.state.internalCircuit;
+
+              // 2. Inject Inputs (External -> Internal)
+              // CRITICAL FIX: Update the STATE of INPUT/BUTTON components, not just pin values
+              // because simulate() will override pin values from component states
+              for (const inputDef of icDef.inputPins) {
+                  const extPin = inPins.find(p => p.name === inputDef.name);
+                  const found = getPin(internalCircuit, inputDef.internalPinId);
+
+                  if (extPin && found) {
+                      // If the internal pin belongs to an INPUT/BUTTON/VCC/GND, update its state
+                      if (found.comp.kind === KIND.INPUT || found.comp.kind === KIND.VCC ||
+                          found.comp.kind === KIND.GND || found.comp.kind === KIND.CLOCK) {
+                          found.comp.state.value = extPin.value;
+                      } else if (found.comp.kind === KIND.BUTTON) {
+                          // For BUTTON, set pressed state based on value
+                          found.comp.state.pressed = (extPin.value === LV.HIGH);
+                      } else {
+                          // For regular gates, set the pin value directly
+                          found.pin.value = extPin.value;
+                      }
+                  }
+              }
+
+              // 3. Simulate Internal Circuit
+              simulate(internalCircuit);
+
+              // 4. Extract Outputs (Internal -> External)
+              for (const outputDef of icDef.outputPins) {
+                  const found = getPin(internalCircuit, outputDef.internalPinId);
+                  if (found) {
+                      setOut(outputDef.name, found.pin.value);
+                  }
+              }
+          }
+      }
+
       if (c.kind === KIND.JUNCTION) {
         const input = inPins[0]?.value ?? LV.X;
         for (const p of outPins) {
