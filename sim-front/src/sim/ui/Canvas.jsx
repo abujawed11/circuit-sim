@@ -988,38 +988,52 @@ if (c.kind === KIND.TIMER_555) {
         ctx.textAlign = "left"; // Reset to default
       } else {
         // Draw INPUT and LED as boxes
-        ctx.fillStyle = "#121212";
-        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
-        ctx.lineWidth = isSel ? 3 : 2;
+        // Skip box drawing for GND and VCC for a cleaner look
+        const isSupply = c.kind === KIND.GND || c.kind === KIND.VCC;
 
-        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-        ctx.fill();
-        ctx.stroke();
+        if (!isSupply) {
+            ctx.fillStyle = "#121212";
+            ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+            ctx.lineWidth = isSel ? 3 : 2;
 
-        // title
-        ctx.fillStyle = "#e5e5e5";
-        ctx.font = "14px system-ui";
-        ctx.fillText(c.kind, c.x + 12, c.y + 22);
+            roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+            ctx.fill();
+            ctx.stroke();
+
+            // title
+            ctx.fillStyle = "#e5e5e5";
+            ctx.font = "14px system-ui";
+            ctx.fillText(c.kind, c.x + 12, c.y + 22);
+        }
 
         if (c.kind === KIND.VCC) {
-          ctx.fillStyle = "#ef4444"; // Red for VCC
+          ctx.fillStyle = isSel ? "#FAD90E" : "#ef4444"; // Highlight if selected
           ctx.font = "bold 20px system-ui";
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText("VCC", c.x + c.w / 2, c.y + c.h / 2);
           ctx.textAlign = "left";
           ctx.textBaseline = "alphabetic";
+
+          // Draw small vertical line to pin
+          ctx.strokeStyle = isSel ? "#FAD90E" : "#ef4444";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(c.x + c.w / 2, c.y + c.h / 2 + 12);
+          ctx.lineTo(c.x + c.w / 2, c.y + c.h);
+          ctx.stroke();
         }
 
         if (c.kind === KIND.GND) {
           // Draw GND symbol (three horizontal lines)
-          ctx.strokeStyle = "#888";
+          ctx.strokeStyle = isSel ? "#FAD90E" : "#9ca3af";
           ctx.lineWidth = 2;
           const centerX = c.x + c.w / 2;
           const centerY = c.y + c.h / 2;
 
+          // Vertical line from top pin
           ctx.beginPath();
-          ctx.moveTo(centerX, centerY - 10);
+          ctx.moveTo(centerX, c.y);
           ctx.lineTo(centerX, centerY + 5);
           ctx.stroke();
 
@@ -2061,6 +2075,16 @@ function pinPosition(c, p) {
   // ✅ LED: Pin on left
   if (c.kind === KIND.LED) {
     return { x: c.x + 6, y: c.y + 30 };
+  }
+
+  // ✅ VCC: Pin on bottom
+  if (c.kind === KIND.VCC) {
+    return { x: c.x + c.w / 2, y: c.y + c.h };
+  }
+
+  // ✅ GND: Pin on top
+  if (c.kind === KIND.GND) {
+    return { x: c.x + c.w / 2, y: c.y };
   }
 
   // ✅ FF PRE/CLR: Top/Bottom Center
