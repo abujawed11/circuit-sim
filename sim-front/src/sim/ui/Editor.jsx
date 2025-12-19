@@ -212,6 +212,60 @@ export default function Editor() {
 
     // Sequential logic write-back (persist simulation state)
     React.useEffect(() => {
+        const prevComponentById = new Map(circuit.components.map((c) => [c.id, c]));
+
+        const internalCircuitStateEquals = (a, b, depth = 0) => {
+            if (!a && !b) return true;
+            if (!a || !b) return false;
+            if (depth > 5) return true; // prevent pathological recursion
+
+            const aComps = Array.isArray(a.components) ? a.components : [];
+            const bComps = Array.isArray(b.components) ? b.components : [];
+            if (aComps.length !== bComps.length) return false;
+
+            const aById = new Map(aComps.map((c) => [c.id, c]));
+            for (const bc of bComps) {
+                const ac = aById.get(bc.id);
+                if (!ac || ac.kind !== bc.kind) return false;
+
+                const as = ac.state || {};
+                const bs = bc.state || {};
+
+                // Compare ONLY "memory" state that must persist across ticks.
+                if (
+                    bc.kind === KIND.SR_LATCH ||
+                    bc.kind === KIND.D_FF ||
+                    bc.kind === KIND.JK_FF ||
+                    bc.kind === KIND.T_FF
+                ) {
+                    if (as.q !== bs.q) return false;
+                    if (as.lastClk !== bs.lastClk) return false;
+                }
+
+                if (bc.kind === KIND.BUFFER) {
+                    const aq = Array.isArray(as.queue) ? as.queue : [];
+                    const bq = Array.isArray(bs.queue) ? bs.queue : [];
+                    if (aq.length !== bq.length) return false;
+                    for (let i = 0; i < aq.length; i++) {
+                        if (aq[i] !== bq[i]) return false;
+                    }
+                }
+
+                if (bc.kind === KIND.TIMER_555) {
+                    if (as.latch !== bs.latch) return false;
+                    if (as.lastTrig !== bs.lastTrig) return false;
+                    if (as.monoEndAt !== bs.monoEndAt) return false;
+                }
+
+                if (bc.kind === "IC_CUSTOM") {
+                    if (!internalCircuitStateEquals(as.internalCircuit, bs.internalCircuit, depth + 1)) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        };
+
         let changed = false;
         const nextComponents = simulated.components.map((c) => {
             let nextState = { ...c.state };
@@ -247,6 +301,17 @@ export default function Editor() {
                 hasUpdate = true;
             }
 
+            // Persist IC internal circuit state (required for sequential logic inside custom ICs)
+            if (c.kind === "IC_CUSTOM") {
+                const prevComp = prevComponentById.get(c.id);
+                const prevInternal = prevComp?.state?.internalCircuit ?? null;
+                const nextInternal = c.state?.internalCircuit ?? null;
+
+                if (!internalCircuitStateEquals(prevInternal, nextInternal)) {
+                    nextState.internalCircuit = nextInternal;
+                    hasUpdate = true;
+                }
+            }
 
             if (hasUpdate) {
                 changed = true;
@@ -285,28 +350,10 @@ export default function Editor() {
                         ? true
                         : pq && nq && pq.length === nq.length && pq.every((v, i) => v === nq[i]);
 
-                // CRITICAL: For IC_CUSTOM components, also compare internal circuit state
-                let sameInternalState = true;
-                if (pc.kind === "IC_CUSTOM" && ps.internalCircuit && ns.internalCircuit) {
-                    // Deep compare internal component states
-                    const prevInternal = ps.internalCircuit.components || [];
-                    const nextInternal = ns.internalCircuit.components || [];
-
-                    if (prevInternal.length === nextInternal.length) {
-                        for (let i = 0; i < prevInternal.length; i++) {
-                            const pComp = prevInternal[i];
-                            const nComp = nextInternal[i];
-
-                            if (pComp.state?.q !== nComp.state?.q ||
-                                pComp.state?.lastClk !== nComp.state?.lastClk) {
-                                sameInternalState = false;
-                                break;
-                            }
-                        }
-                    } else {
-                        sameInternalState = false;
-                    }
-                }
+                const sameInternalState =
+                    pc.kind === "IC_CUSTOM"
+                        ? internalCircuitStateEquals(ps.internalCircuit, ns.internalCircuit)
+                        : true;
 
                 if (sameQ && sameLastClk && sameQueue && sameInternalState) return pc;
 
@@ -314,9 +361,6 @@ export default function Editor() {
 
                 // Merge state, including internal circuit for ICs
                 const mergedState = { ...pc.state, ...ns };
-                if (pc.kind === "IC_CUSTOM" && ns.internalCircuit) {
-                    mergedState.internalCircuit = ns.internalCircuit;
-                }
 
                 return { ...pc, state: mergedState };
             });

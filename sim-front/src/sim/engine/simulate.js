@@ -32,11 +32,13 @@ export const getPin = (circuit, pinId) => {
 };
 
 // Compute pin values by iterating until stable (works for combinational circuits)
-export const simulate = (circuit) => {
+export const simulate = (circuit, preSimulate = null) => {
   // Reset all pin values to X first
   for (const c of circuit.components) {
     for (const p of c.pins) p.value = LV.X;
   }
+
+  if (preSimulate) preSimulate();
 
   // Seed INPUT, BUTTON, VCC, GND, CLOCK outputs from their state
   for (const c of circuit.components) {
@@ -267,60 +269,40 @@ export const simulate = (circuit) => {
           const internalCircuit = c.state.internalCircuit;
 
           // 2. Inject Inputs (External -> Internal)
-          // CRITICAL FIX: Update the STATE of INPUT/BUTTON components, not just pin values
-          // because simulate() will override pin values from component states
-          // for (const inputDef of icDef.inputPins) {
-          //   const extPin = inPins.find(p => p.name === inputDef.name);
-          //   // const found = getPin(internalCircuit, inputDef.internalPinId);
+          // Moved to callback to persist after reset
+          const injectInputs = () => {
+              for (const inputDef of icDef.inputPins) {
+                const extPin = inPins.find(p => p.name === inputDef.name);
 
+                // ✅ NEW: support driving multiple internal pins from one external pin
+                const ids = inputDef.internalPinIds?.length
+                  ? inputDef.internalPinIds
+                  : [inputDef.internalPinId];
 
+                for (const internalId of ids) {
+                  const found = getPin(internalCircuit, internalId);
 
-          //   if (extPin && found) {
-          //     // If the internal pin belongs to an INPUT/BUTTON/VCC/GND, update its state
-          //     if (found.comp.kind === KIND.INPUT || found.comp.kind === KIND.VCC ||
-          //       found.comp.kind === KIND.GND || found.comp.kind === KIND.CLOCK) {
-          //       found.comp.state.value = extPin.value;
-          //     } else if (found.comp.kind === KIND.BUTTON) {
-          //       // For BUTTON, set pressed state based on value
-          //       found.comp.state.pressed = (extPin.value === LV.HIGH);
-          //     } else {
-          //       // For regular gates, set the pin value directly
-          //       found.pin.value = extPin.value;
-          //     }
-          //   }
-          // }
-
-          for (const inputDef of icDef.inputPins) {
-            const extPin = inPins.find(p => p.name === inputDef.name);
-
-            // ✅ NEW: support driving multiple internal pins from one external pin
-            const ids = inputDef.internalPinIds?.length
-              ? inputDef.internalPinIds
-              : [inputDef.internalPinId];
-
-            for (const internalId of ids) {
-              const found = getPin(internalCircuit, internalId);
-
-              if (extPin && found) {
-                // If the internal pin belongs to an INPUT/BUTTON/VCC/GND/CLOCK, update its state
-                if (
-                  found.comp.kind === KIND.INPUT ||
-                  found.comp.kind === KIND.VCC ||
-                  found.comp.kind === KIND.GND ||
-                  found.comp.kind === KIND.CLOCK
-                ) {
-                  found.comp.state.value = extPin.value;
-                } else if (found.comp.kind === KIND.BUTTON) {
-                  found.comp.state.pressed = (extPin.value === LV.HIGH);
-                } else {
-                  found.pin.value = extPin.value;
+                  if (extPin && found) {
+                    // If the internal pin belongs to an INPUT/BUTTON/VCC/GND/CLOCK, update its state
+                    if (
+                      found.comp.kind === KIND.INPUT ||
+                      found.comp.kind === KIND.VCC ||
+                      found.comp.kind === KIND.GND ||
+                      found.comp.kind === KIND.CLOCK
+                    ) {
+                      found.comp.state.value = extPin.value;
+                    } else if (found.comp.kind === KIND.BUTTON) {
+                      found.comp.state.pressed = (extPin.value === LV.HIGH);
+                    } else {
+                      found.pin.value = extPin.value;
+                    }
+                  }
                 }
               }
-            }
-          }
+          };
 
           // 3. Simulate Internal Circuit
-          simulate(internalCircuit);
+          simulate(internalCircuit, injectInputs);
 
           // 3.5. CRITICAL: Persist sequential state for internal components
           // This ensures flip-flops/buffers inside ICs remember their state between ticks
