@@ -3,6 +3,7 @@ import { KIND, makeEmptyCircuit, LV, uid, makeICDefinition } from "../model/type
 import { makeComponent } from "../model/gates";
 import Canvas from "./Canvas";
 import ICCreationDialog from "./ICCreationDialog";
+import PropertiesPanel from "./PropertiesPanel";
 import { simulate } from "../engine/simulate";
 
 const palette = [
@@ -515,6 +516,15 @@ export default function Editor() {
         updateCircuit(next);
     };
 
+    const handleComponentUpdate = (updatedComp) => {
+        const next = structuredClone(circuit);
+        const idx = next.components.findIndex((c) => c.id === updatedComp.id);
+        if (idx !== -1) {
+            next.components[idx] = updatedComp;
+            updateCircuit(next);
+        }
+    };
+
     // NEW: connect output pin -> input pin
 
     const connectPins = (aPinId, bPinId, points = []) => {
@@ -944,6 +954,15 @@ export default function Editor() {
                 />
 
             </div>
+
+            {/* Right Properties Panel */}
+            {currentSelection.compIds.length === 1 && (
+                <PropertiesPanel
+                    selection={currentSelection}
+                    circuit={circuit}
+                    updateComponent={handleComponentUpdate}
+                />
+            )}
         </div>
     );
 }

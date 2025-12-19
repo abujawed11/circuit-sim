@@ -137,9 +137,20 @@ export default function Canvas({
 
   React.useEffect(() => {
     if (typeof onSelectionChange === "function") {
-      onSelectionChange({ compIds: selectedCompIds, wireIds: selectedWireIds });
+      // Combine single and multi selections for external consumers
+      const allCompIds = [...selectedCompIds];
+      if (selectedCompId && !allCompIds.includes(selectedCompId)) {
+        allCompIds.push(selectedCompId);
+      }
+      
+      const allWireIds = [...selectedWireIds];
+      if (selectedWireId && !allWireIds.includes(selectedWireId)) {
+        allWireIds.push(selectedWireId);
+      }
+
+      onSelectionChange({ compIds: allCompIds, wireIds: allWireIds });
     }
-  }, [selectedCompIds, selectedWireIds]);
+  }, [selectedCompIds, selectedWireIds, selectedCompId, selectedWireId]);
 
 
   const draw = () => {

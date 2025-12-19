@@ -71,11 +71,11 @@ export const simulate = (circuit) => {
         c.state.queue = [];
       }
 
-      const delay = Math.max(0, c.props.delay || 0);
+      const delay = Math.max(1, c.props.delay || 1);
 
-      // Output the value at the front of the queue (or X if empty)
+      // Output the value at the front of the queue ONLY if we have reached the delay depth
       let output = LV.X;
-      if (c.state.queue.length > 0) {
+      if (c.state.queue.length >= delay) {
         output = c.state.queue[0]; // Peek at oldest value
       }
 
@@ -561,7 +561,7 @@ export const simulate = (circuit) => {
       // Push into queue
       c.state.queue.push(currentInput);
 
-      const delay = Math.max(0, c.props.delay || 0);
+      const delay = Math.max(1, c.props.delay || 1);
 
       // Remove oldest value if queue is longer than delay
       if (c.state.queue.length > delay) {
