@@ -246,6 +246,20 @@ export default function Canvas({
     for (const c of circuit.components) {
       const isSel = c.id === selectedCompId || selectedCompIds.includes(c.id);
 
+      ctx.save();
+      
+      // Apply Rotation
+      if (c.rotate && c.kind !== KIND.JUNCTION) {
+         const cx = c.x + c.w / 2;
+         const cy = c.y + c.h / 2;
+         ctx.translate(cx, cy);
+         ctx.rotate((c.rotate * 90 * Math.PI) / 180);
+         ctx.translate(-cx, -cy);
+      }
+
+      // Use basePinPosition for local drawing, since context is rotated
+      const pinPosition = (cc, pp) => basePinPosition(cc, pp);
+
       // ✅ Special rendering for junction (NO box/title/pins)
       if (c.kind === KIND.JUNCTION) {
         const inputPin = c.pins.find((p) => p.name === "IN");
@@ -307,6 +321,7 @@ export default function Canvas({
         ctx.fillStyle = wireColorForValue(v);
         ctx.fill();
 
+        ctx.restore();
         continue;
       }
 
@@ -404,7 +419,8 @@ export default function Canvas({
 
                 
 
-                continue;
+                ctx.restore();
+        continue;
 
               }
 
@@ -445,6 +461,7 @@ export default function Canvas({
           const pos = pinPosition(c, p);
           pinDot(ctx, pos.x, pos.y, p.value);
         }
+        ctx.restore();
         continue;
       }
 
@@ -499,6 +516,7 @@ export default function Canvas({
           const pos = pinPosition(c, p);
           pinDot(ctx, pos.x, pos.y, p.value);
         }
+        ctx.restore();
         continue;
       }
 
@@ -532,6 +550,7 @@ export default function Canvas({
           const pos = pinPosition(c, p);
           pinDot(ctx, pos.x, pos.y, p.value);
         }
+        ctx.restore();
         continue;
       }
 
@@ -572,6 +591,7 @@ export default function Canvas({
           const pos = pinPosition(c, p);
           pinDot(ctx, pos.x, pos.y, p.value);
         }
+        ctx.restore();
         continue;
       }
 
@@ -593,10 +613,12 @@ export default function Canvas({
         ctx.font = "bold 14px system-ui";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(
+        drawStraightText(
+          ctx,
           c.kind.replace("_LATCH", "").replace("_FF", ""),
           c.x + c.w / 2,
-          c.y + c.h / 2
+          c.y + c.h / 2,
+          c
         );
         ctx.textAlign = "left";
         ctx.textBaseline = "alphabetic";
@@ -650,6 +672,7 @@ export default function Canvas({
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.textAlign = "left"; // reset
+        ctx.restore();
         continue;
       }
 
@@ -668,7 +691,7 @@ if (c.kind === KIND.TIMER_555) {
   ctx.font = "bold 44px system-ui";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("555", c.x + c.w / 2, c.y + c.h / 2);
+  drawStraightText(ctx, "555", c.x + c.w / 2, c.y + c.h / 2, c);
 
   // pins (dots + labels + pin numbers)
   for (const p of c.pins) {
@@ -755,7 +778,7 @@ if (c.kind === KIND.TIMER_555) {
         ctx.fillStyle = "#fff";
         ctx.font = "bold 14px monospace";
         ctx.textAlign = "center";
-        ctx.fillText(name, c.x + c.w / 2, c.y + 20);
+        drawStraightText(ctx, name, c.x + c.w / 2, c.y + 20, c);
         ctx.textAlign = "left";
 
         // Draw pins with labels
@@ -784,6 +807,7 @@ if (c.kind === KIND.TIMER_555) {
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.textAlign = "left"; // reset
+        ctx.restore();
         continue;
       }
 
@@ -799,10 +823,12 @@ if (c.kind === KIND.TIMER_555) {
         ctx.fillStyle = "#e5e5e5";
         ctx.font = "bold 14px system-ui";
         ctx.textAlign = "center";
-        ctx.fillText(
+        drawStraightText(
+          ctx,
           c.kind === KIND.MUX ? `MUX ${c.props.size}:1` : `DEMUX 1:${c.props.size}`,
           c.x + c.w / 2,
-          c.y + 20
+          c.y + 20,
+          c
         );
         ctx.textAlign = "left";
 
@@ -840,6 +866,7 @@ if (c.kind === KIND.TIMER_555) {
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.textAlign = "left"; // reset
+        ctx.restore();
         continue;
       }
 
@@ -854,7 +881,7 @@ if (c.kind === KIND.TIMER_555) {
         ctx.fillStyle = "#e5e5e5";
         ctx.font = "bold 14px system-ui";
         ctx.textAlign = "center";
-        ctx.fillText("BCD -> 7SEG", c.x + c.w / 2, c.y + 20);
+        drawStraightText(ctx, "BCD -> 7SEG", c.x + c.w / 2, c.y + 20, c);
         ctx.textAlign = "left";
 
         ctx.font = "10px system-ui";
@@ -879,6 +906,7 @@ if (c.kind === KIND.TIMER_555) {
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.textAlign = "left";
+        ctx.restore();
         continue;
       }
 
@@ -994,6 +1022,7 @@ if (c.kind === KIND.TIMER_555) {
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.textAlign = "left";
+        ctx.restore();
         continue;
       }
 
@@ -1040,7 +1069,7 @@ if (c.kind === KIND.TIMER_555) {
         ctx.fillStyle = "#e5e5e5";
         ctx.font = "12px system-ui";
         ctx.textAlign = "center";
-        ctx.fillText(c.kind, c.x + c.w / 2, c.y + c.h - 8);
+        drawStraightText(ctx, c.kind, c.x + c.w / 2, c.y + c.h - 8, c);
         ctx.textAlign = "left"; // Reset to default
       } else {
         // Draw INPUT and LED as boxes
@@ -1059,7 +1088,7 @@ if (c.kind === KIND.TIMER_555) {
             // title
             ctx.fillStyle = "#e5e5e5";
             ctx.font = "14px system-ui";
-            ctx.fillText(c.kind, c.x + 12, c.y + 22);
+            drawStraightText(ctx, c.kind, c.x + 12, c.y + 22, c);
         }
 
         if (c.kind === KIND.VCC) {
@@ -1145,6 +1174,7 @@ if (c.kind === KIND.TIMER_555) {
 
         pinDot(ctx, pos.x, pos.y, p.value);
       }
+      ctx.restore();
     }
 
     // ---- Draw selection box ----
@@ -1954,7 +1984,23 @@ function findPin(circuit, pinId) {
 function hitComponent(circuit, x, y) {
   for (let i = circuit.components.length - 1; i >= 0; i--) {
     const c = circuit.components[i];
-    if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) return c;
+    
+    let testX = x;
+    let testY = y;
+
+    if (c.rotate) {
+         const cx = c.x + c.w / 2;
+         const cy = c.y + c.h / 2;
+         const rad = -(c.rotate * 90 * Math.PI) / 180; // Negative for inverse rotation
+         
+         const dx = x - cx;
+         const dy = y - cy;
+         
+         testX = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
+         testY = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+    }
+
+    if (testX >= c.x && testX <= c.x + c.w && testY >= c.y && testY <= c.y + c.h) return c;
   }
   return null;
 }
@@ -2092,7 +2138,38 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+function drawStraightText(ctx, text, x, y, c) {
+    if (!c.rotate) {
+        ctx.fillText(text, x, y);
+        return;
+    }
+    ctx.save();
+    ctx.translate(x, y);
+    // Counter-rotate to keep text horizontal
+    ctx.rotate(-(c.rotate * 90 * Math.PI) / 180);
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
+}
+
 function pinPosition(c, p) {
+    const pos = basePinPosition(c, p);
+    if (!c.rotate) return pos;
+
+    // Rotate around center
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    const rad = (c.rotate * 90 * Math.PI) / 180;
+    
+    const dx = pos.x - cx;
+    const dy = pos.y - cy;
+
+    return {
+        x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+        y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+    };
+}
+
+function basePinPosition(c, p) {
   // ✅ Junction pins meet exactly at the node center
   if (c.kind === KIND.JUNCTION) {
     return { x: c.x + c.w / 2, y: c.y + c.h / 2 };

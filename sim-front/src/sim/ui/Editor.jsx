@@ -569,6 +569,49 @@ export default function Editor() {
         }
     };
 
+    const rotateComponent = (compId, direction = 1) => {
+        const next = structuredClone(circuit);
+        const c = next.components.find((cc) => cc.id === compId);
+        if (c) {
+            // Update rotation (0..3)
+            c.rotate = ((c.rotate || 0) + direction + 4) % 4;
+            
+            // Swap w/h for 90 degree turns
+            // Actually, we don't swap w/h in the model, we just render rotated.
+            // BUT, if we swap w/h here, hit testing and pin positioning logic might need less changing?
+            // No, purely visual rotation is better, but pin position logic needs to account for it.
+            // Let's stick to just setting 'rotate' property for now.
+        }
+        updateCircuit(next);
+    };
+
+    // Keyboard shortcuts
+    React.useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.target.tagName === "INPUT") return; // Ignore if typing in input
+
+            if (e.key.toLowerCase() === "r") {
+                if (currentSelection.compIds.length > 0) {
+                    // Rotate all selected
+                    const next = structuredClone(circuit);
+                    let changed = false;
+                    for (const id of currentSelection.compIds) {
+                         const c = next.components.find(cc => cc.id === id);
+                         if (c) {
+                             c.rotate = ((c.rotate || 0) + 1) % 4;
+                             changed = true;
+                         }
+                    }
+                    if (changed) updateCircuit(next);
+                }
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [circuit, currentSelection]);
+
+
     // NEW: connect output pin -> input pin
 
     const connectPins = (aPinId, bPinId, points = []) => {
