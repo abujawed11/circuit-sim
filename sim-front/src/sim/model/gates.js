@@ -276,7 +276,7 @@ export const makeComponent = (kind, x, y) => {
       return {
         ...base,
         w: 90,
-        h: 130,
+        h: 160,
         pins: [
             pin("a", "in", { side: "left", label: "a" }),
             pin("b", "in", { side: "left", label: "b" }),

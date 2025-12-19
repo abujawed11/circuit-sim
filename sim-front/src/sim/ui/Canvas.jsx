@@ -2098,7 +2098,8 @@ function pinPosition(c, p) {
     const idx = group.findIndex(pp => pp.id === p.id);
     const count = group.length;
 
-    const pad = 18; // distance from corner
+    // Dynamically adjust pad based on pin count to prevent crowding
+    const pad = count > 5 ? 6 : 18; 
     const t = (idx + 1) / (count + 1);
 
     if (p.side === "left") {
