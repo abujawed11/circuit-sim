@@ -344,13 +344,69 @@ export default function Canvas({
         ctx.fillText(isOn ? "ON" : "OFF", c.x + 30, c.y + 55);
         ctx.textAlign = "left";
 
-        // Draw pin
-        for (const p of c.pins) {
-          const pos = pinPosition(c, p);
-          pinDot(ctx, pos.x, pos.y, p.value);
-        }
-        continue;
-      }
+                // Draw pin
+
+                for (const p of c.pins) {
+
+                  const pos = pinPosition(c, p);
+
+        
+
+                  // Check if this pin is hovered
+
+                  const isHovered = hoveredPin?.pin?.id === p.id;
+
+                  if (isHovered) {
+
+                     ctx.save();
+
+                     ctx.globalAlpha = 0.5;
+
+                     ctx.beginPath();
+
+                     ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+
+                     
+
+                     if (draft) {
+
+                         const fromMeta = getPinMeta(draft.fromPinId);
+
+                         let isValid = false;
+
+                         if (fromMeta) {
+
+                             if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
+
+                             if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
+
+                         }
+
+                         ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+
+                     } else {
+
+                         ctx.fillStyle = "#60a5fa";
+
+                     }
+
+                     ctx.fill();
+
+                     ctx.restore();
+
+                  }
+
+        
+
+                  pinDot(ctx, pos.x, pos.y, p.value);
+
+                }
+
+                
+
+                continue;
+
+              }
 
       if (c.kind === KIND.BUTTON) {
         const isPressed = !!c.state.pressed;
