@@ -112,6 +112,7 @@ export default function Editor() {
                     { kind: "DEMUX_2", label: "DEMUX 1:2", short: "DMX", hint: "Route to 1 of 2" },
                     { kind: "DEMUX_4", label: "DEMUX 1:4", short: "DMX", hint: "Route to 1 of 4" },
                     { kind: "DEMUX_8", label: "DEMUX 1:8", short: "DMX", hint: "Route to 1 of 8" },
+                    { kind: KIND.BCD_7SEG, label: "BCD Decoder", short: "7SEG", hint: "0-F -> 7-segment" },
                 ],
             },
             {

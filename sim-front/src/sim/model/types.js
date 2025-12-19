@@ -33,6 +33,7 @@ export const KIND = {
   MUX: "MUX",
   DEMUX: "DEMUX",
   TIMER_555: "TIMER_555",
+  BCD_7SEG: "BCD_7SEG",
 };
 
 // Circuit structure:

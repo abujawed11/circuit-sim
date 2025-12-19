@@ -249,6 +249,29 @@ export const makeComponent = (kind, x, y) => {
         ],
       };
 
+    case KIND.BCD_7SEG:
+      return {
+        ...base,
+        w: 120,
+        h: 160,
+        pins: [
+          // Inputs (BCD) - Left
+          pin("A", "in", { side: "left", label: "A (1)" }),
+          pin("B", "in", { side: "left", label: "B (2)" }),
+          pin("C", "in", { side: "left", label: "C (4)" }),
+          pin("D", "in", { side: "left", label: "D (8)" }),
+
+          // Outputs (Segments) - Right
+          pin("a", "out", { side: "right", label: "a" }),
+          pin("b", "out", { side: "right", label: "b" }),
+          pin("c", "out", { side: "right", label: "c" }),
+          pin("d", "out", { side: "right", label: "d" }),
+          pin("e", "out", { side: "right", label: "e" }),
+          pin("f", "out", { side: "right", label: "f" }),
+          pin("g", "out", { side: "right", label: "g" }),
+        ],
+      };
+
 
     default:
       return base;

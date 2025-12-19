@@ -508,6 +508,44 @@ export const simulate = (circuit) => {
           }
         }
       }
+
+      if (c.kind === KIND.BCD_7SEG) {
+        const getVal = (n) => inPins.find(p => p.name === n)?.value ?? LV.X;
+        const A = getVal("A");
+        const B = getVal("B");
+        const C = getVal("C");
+        const D = getVal("D");
+
+        if (A === LV.X || B === LV.X || C === LV.X || D === LV.X) {
+             ["a", "b", "c", "d", "e", "f", "g"].forEach(seg => setOut(seg, LV.LOW)); // Off if undefined
+        } else {
+            const val = (D << 3) | (C << 2) | (B << 1) | A;
+            
+            // Segments: a, b, c, d, e, f, g
+            const map = [
+                // 0    1      2      3      4      5      6      7      8      9      A      b      C      d      E      F
+                0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71
+            ];
+            /*
+              Bit 0: a
+              Bit 1: b
+              Bit 2: c
+              Bit 3: d
+              Bit 4: e
+              Bit 5: f
+              Bit 6: g
+            */
+           
+           const pattern = map[val];
+           setOut("a", (pattern & 1) ? LV.HIGH : LV.LOW);
+           setOut("b", (pattern & 2) ? LV.HIGH : LV.LOW);
+           setOut("c", (pattern & 4) ? LV.HIGH : LV.LOW);
+           setOut("d", (pattern & 8) ? LV.HIGH : LV.LOW);
+           setOut("e", (pattern & 16) ? LV.HIGH : LV.LOW);
+           setOut("f", (pattern & 32) ? LV.HIGH : LV.LOW);
+           setOut("g", (pattern & 64) ? LV.HIGH : LV.LOW);
+        }
+      }
     }
 
     if (!changed) break;
