@@ -1619,9 +1619,29 @@ if (c.kind === KIND.TIMER_555) {
     if (draft) {
       const hitW = hitTestWirePolyline(circuit, x, y);
       if (hitW) {
-        onSplitWire(hitW.id, { x: sx, y: sy });
-        const junction = circuit.components[circuit.components.length - 1];
-        tryConnectPins(draft.fromPinId, junction.pins[0].id, draft.points);
+        const from = findPinPos(circuit, hitW.fromPinId);
+        const to = findPinPos(circuit, hitW.toPinId);
+        if (!from || !to) {
+          setDraft(null);
+          return;
+        }
+
+        const pts = buildWirePolyline(from, to, hitW.points);
+        const { pt, t } = closestPointOnPolyline({ x, y }, pts);
+
+        const snapped = { x: snap(pt.x), y: snap(pt.y) };
+
+        const points = Array.isArray(hitW.points) ? hitW.points : [];
+        const segIndex = Math.max(0, Math.min(points.length, Math.floor(t)));
+
+        const junctionInPinId = onSplitWire(hitW.id, snapped, {
+          beforePoints: points.slice(0, segIndex),
+          afterPoints: points.slice(segIndex),
+        });
+
+        if (junctionInPinId) {
+          tryConnectPins(draft.fromPinId, junctionInPinId, draft.points);
+        }
         setDraft(null);
         return;
       }
@@ -1888,11 +1908,19 @@ if (c.kind === KIND.TIMER_555) {
                   // ✅ use closest point ON the wire, not where user clicked near it
                   const from = findPinPos(circuit, wire.fromPinId);
                   const to = findPinPos(circuit, wire.toPinId);
+                  if (!from || !to) return;
                   const pts = buildWirePolyline(from, to, wire.points);
-                  const { pt } = closestPointOnPolyline({ x: menu.x, y: menu.y }, pts);
+                  const { pt, t } = closestPointOnPolyline({ x: menu.x, y: menu.y }, pts);
 
                   const snapped = { x: snap(pt.x), y: snap(pt.y) };
-                  const newPinId = onSplitWireAndStartDraft(menu.id, snapped);
+
+                  const points = Array.isArray(wire.points) ? wire.points : [];
+                  const segIndex = Math.max(0, Math.min(points.length, Math.floor(t)));
+
+                  const newPinId = onSplitWireAndStartDraft(menu.id, snapped, {
+                    beforePoints: points.slice(0, segIndex),
+                    afterPoints: points.slice(segIndex),
+                  });
 
                   setDraft({ fromPinId: newPinId, points: [] });
                   closeMenu();
@@ -1918,9 +1946,16 @@ if (c.kind === KIND.TIMER_555) {
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800"
                 onClick={() => {
-                  const newPinId = onSplitWireAndStartDraft(menu.wireId, {
-                    x: snap(menu.x),
-                    y: snap(menu.y),
+                  const wire = circuit.wires.find((w) => w.id === menu.wireId);
+                  const points = Array.isArray(wire?.points) ? wire.points : [];
+                  const idx = Math.max(0, Math.min(points.length - 1, menu.pointIndex));
+                  const p = points[idx];
+                  if (!p) return;
+
+                  const snapped = { x: snap(p.x), y: snap(p.y) };
+                  const newPinId = onSplitWireAndStartDraft(menu.wireId, snapped, {
+                    beforePoints: points.slice(0, idx),
+                    afterPoints: points.slice(idx + 1),
                   });
                   setDraft({ fromPinId: newPinId, points: [] });
                   closeMenu();

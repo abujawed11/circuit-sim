@@ -691,7 +691,7 @@ export default function Editor() {
         }
     };
 
-    const onSplitWire = (wireId, point) => {
+    const onSplitWire = (wireId, point, split = null) => {
         const next = structuredClone(circuit);
         const wire = next.wires.find((w) => w.id === wireId);
         if (!wire) return;
@@ -700,19 +700,25 @@ export default function Editor() {
         const junction = makeComponent(KIND.JUNCTION, point.x - 10, point.y - 10);
         next.components.push(junction);
 
+        const originalPoints = Array.isArray(wire.points) ? wire.points : [];
+        const beforePoints = Array.isArray(split?.beforePoints) ? split.beforePoints : originalPoints;
+        const afterPoints = Array.isArray(split?.afterPoints) ? split.afterPoints : [];
+
         const oldToPinId = wire.toPinId;
         wire.toPinId = junction.pins[0].id;
+        wire.points = beforePoints;
 
         next.wires.push({
             id: uid(),
             fromPinId: junction.pins[1].id,
             toPinId: oldToPinId,
-            points: [],
+            points: afterPoints,
         });
         updateCircuit(next);
+        return junction.pins[0].id; // IN pin
     };
 
-    const onSplitWireAndStartDraft = (wireId, point) => {
+    const onSplitWireAndStartDraft = (wireId, point, split = null) => {
         const next = structuredClone(circuit);
         const wire = next.wires.find((w) => w.id === wireId);
         if (!wire) return;
@@ -721,14 +727,19 @@ export default function Editor() {
         const junction = makeComponent(KIND.JUNCTION, point.x - 10, point.y - 10);
         next.components.push(junction);
 
+        const originalPoints = Array.isArray(wire.points) ? wire.points : [];
+        const beforePoints = Array.isArray(split?.beforePoints) ? split.beforePoints : originalPoints;
+        const afterPoints = Array.isArray(split?.afterPoints) ? split.afterPoints : [];
+
         const oldToPinId = wire.toPinId;
         wire.toPinId = junction.pins[0].id;
+        wire.points = beforePoints;
 
         next.wires.push({
             id: uid(),
             fromPinId: junction.pins[1].id,
             toPinId: oldToPinId,
-            points: [],
+            points: afterPoints,
         });
         updateCircuit(next);
         return junction.pins[1].id;
