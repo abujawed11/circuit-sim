@@ -129,6 +129,7 @@ export default function Canvas({
   // Hover states for UX feedback
   const [hoveredPin, setHoveredPin] = useState(null); // { comp, pin, x, y }
   const [hoveredJunction, setHoveredJunction] = useState(null); // component object
+  const [hoveredComponent, setHoveredComponent] = useState(null); // component object
   const [toast, setToast] = useState(null); // { message }
 
   const dragMovedRef = React.useRef(false);
@@ -1181,14 +1182,19 @@ if (c.kind === KIND.TIMER_555) {
       if (junction) {
         setHoveredJunction(junction);
         setHoveredPin(null);
+        setHoveredComponent(null);
       } else {
         const pin = hitTestPin(circuit, p.x, p.y);
         if (pin) {
           setHoveredPin(pin);
           setHoveredJunction(null);
+          setHoveredComponent(null);
         } else {
           setHoveredPin(null);
           setHoveredJunction(null);
+          
+          const comp = hitComponent(circuit, p.x, p.y);
+          setHoveredComponent(comp);
         }
       }
     }
@@ -1671,7 +1677,14 @@ if (c.kind === KIND.TIMER_555) {
     <div className="w-full h-full relative">
       <canvas
         ref={ref}
-        className="w-full h-full cursor-crosshair"
+        style={{
+            cursor: drag || pointDrag 
+                ? "grabbing" 
+                : (hoveredComponent || hoveredPin || hoveredJunction) 
+                    ? "pointer" 
+                    : "crosshair"
+        }}
+        className="w-full h-full"
         onMouseMove={onMouseMove}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
