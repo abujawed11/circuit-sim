@@ -1,7 +1,7 @@
 import React from "react";
 import { KIND } from "../model/types";
 
-export default function PropertiesPanel({ selection, circuit, updateComponent }) {
+export default function PropertiesPanel({ selection, circuit, updateComponent, onClose }) {
   if (selection.compIds.length !== 1) {
     return (
       <div className="w-64 border-l border-neutral-800 bg-neutral-950/60 p-4 text-neutral-500 text-sm">
@@ -35,8 +35,18 @@ export default function PropertiesPanel({ selection, circuit, updateComponent })
 
   return (
     <div className="w-64 border-l border-neutral-800 bg-neutral-950/60 backdrop-blur flex flex-col h-full">
-      <div className="p-4 border-b border-neutral-800 font-semibold text-neutral-200">
-        Properties
+      <div className="p-4 border-b border-neutral-800 font-semibold text-neutral-200 flex items-center justify-between">
+        <div>Properties</div>
+        {typeof onClose === "function" && (
+          <button
+            onClick={onClose}
+            className="text-neutral-500 hover:text-neutral-100 transition w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-800"
+            title="Close"
+            aria-label="Close properties"
+          >
+            ×
+          </button>
+        )}
       </div>
       
       <div className="p-4 space-y-4 overflow-y-auto flex-1">

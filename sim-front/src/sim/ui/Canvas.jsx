@@ -100,6 +100,7 @@ export default function Canvas({
   onToggleClockMode,
   onSetComponentValue,
   onSetButtonPressed,
+  onOpenProperties,
   onSelectionChange, // ✅ ADD THIS
 }) {
   const ref = useRef(null);
@@ -1800,6 +1801,17 @@ if (c.kind === KIND.TIMER_555) {
         >
           {menu.type === "comp" && (
             <div className="min-w-44">
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                onClick={() => {
+                  if (typeof onOpenProperties === "function") {
+                    onOpenProperties(menu.id);
+                  }
+                  closeMenu();
+                }}
+              >
+                Properties
+              </button>
               {menu.kind === KIND.CLOCK && (
                 <button
                   className="w-full text-left px-3 py-2 hover:bg-neutral-800"

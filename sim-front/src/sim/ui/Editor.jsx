@@ -68,6 +68,8 @@ export default function Editor() {
         wireIds: [],
     });
 
+    const [propertiesSelection, setPropertiesSelection] = useState(null); // { compIds: [id], wireIds: [] } | null
+
 
     // Auto-save circuit to localStorage whenever it changes
     React.useEffect(() => {
@@ -171,6 +173,14 @@ export default function Editor() {
         simulate(clone);
         return clone;
     }, [circuit, simTick]);
+
+    // Close properties if the target component is deleted
+    React.useEffect(() => {
+        if (!propertiesSelection?.compIds?.length) return;
+        const compId = propertiesSelection.compIds[0];
+        const exists = circuit.components.some((c) => c.id === compId);
+        if (!exists) setPropertiesSelection(null);
+    }, [circuit, propertiesSelection]);
 
 
     // Clock ticker
@@ -1030,6 +1040,7 @@ export default function Editor() {
                     onSetComponentValue={setComponentValue}
                     onSetButtonPressed={setButtonPressed}
                     onSelectionChange={setCurrentSelection}
+                    onOpenProperties={(compId) => setPropertiesSelection({ compIds: [compId], wireIds: [] })}
                 />
 
                 <ICCreationDialog
@@ -1043,11 +1054,12 @@ export default function Editor() {
             </div>
 
             {/* Right Properties Panel */}
-            {currentSelection.compIds.length === 1 && (
+            {propertiesSelection?.compIds?.length === 1 && (
                 <PropertiesPanel
-                    selection={currentSelection}
+                    selection={propertiesSelection}
                     circuit={circuit}
                     updateComponent={handleComponentUpdate}
+                    onClose={() => setPropertiesSelection(null)}
                 />
             )}
         </div>
