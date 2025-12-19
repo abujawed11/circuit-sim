@@ -814,6 +814,121 @@ if (c.kind === KIND.TIMER_555) {
         continue;
       }
 
+      if (c.kind === KIND.SEVEN_SEGMENT) {
+        // Draw body
+        ctx.fillStyle = "#111";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#444";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        // Helper to get pin value
+        const getVal = (name) => c.pins.find(p => p.name === name)?.value;
+
+        // Draw segments
+        // Center x,y relative to component
+        const cx = c.x + c.w * 0.6; 
+        const cy = c.y + c.h / 2;
+        const sw = 40; // width of digit
+        const sh = 60; // height of digit
+        const t = 5;   // thickness
+
+        // Offsets for segments a-g
+        // a: top
+        // b: top-right
+        // c: bottom-right
+        // d: bottom
+        // e: bottom-left
+        // f: top-left
+        // g: middle
+
+        const drawH = (x, y, active) => {
+            ctx.beginPath();
+            ctx.moveTo(x + t, y);
+            ctx.lineTo(x + sw - t, y);
+            ctx.lineTo(x + sw - t - t, y + t);
+            ctx.lineTo(x + t + t, y + t);
+            ctx.closePath();
+            ctx.fillStyle = active === LV.HIGH ? "#ff0000" : "#330000";
+            ctx.fill();
+        };
+
+        const drawV = (x, y, active) => {
+             ctx.beginPath();
+             ctx.moveTo(x, y + t);
+             ctx.lineTo(x + t, y + t + t);
+             ctx.lineTo(x + t, y + sh/2 - t - t);
+             ctx.lineTo(x, y + sh/2 - t);
+             ctx.closePath();
+             ctx.fillStyle = active === LV.HIGH ? "#ff0000" : "#330000";
+             ctx.fill();
+        }
+
+        // Segment coordinates definitions
+        // A simple approach: defined rects or paths
+        const segs = {
+            a: { x: cx - sw/2, y: cy - sh/2, type: 'h' },
+            b: { x: cx + sw/2 - t, y: cy - sh/2, type: 'v' },
+            c: { x: cx + sw/2 - t, y: cy, type: 'v' },
+            d: { x: cx - sw/2, y: cy + sh/2 - t, type: 'h' },
+            e: { x: cx - sw/2, y: cy, type: 'v' },
+            f: { x: cx - sw/2, y: cy - sh/2, type: 'v' },
+            g: { x: cx - sw/2, y: cy - t/2, type: 'h' },
+        };
+
+        // Custom draw functions for better looking segments
+        const drawSeg = (key, active) => {
+             ctx.fillStyle = active === LV.HIGH ? "#ef4444" : "#280505";
+             
+             if (key === 'dp') {
+                 ctx.beginPath();
+                 ctx.arc(cx + sw/2 + 10, cy + sh/2 - 5, 3, 0, Math.PI*2);
+                 ctx.fill();
+                 return;
+             }
+
+             const x = segs[key].x;
+             const y = segs[key].y;
+             
+             // Simple rectangles for robustness
+             if (key === 'a') ctx.fillRect(x, y, sw, t);
+             if (key === 'b') ctx.fillRect(x, y, t, sh/2);
+             if (key === 'c') ctx.fillRect(x, y, t, sh/2);
+             if (key === 'd') ctx.fillRect(x, y, sw, t);
+             if (key === 'e') ctx.fillRect(x, y, t, sh/2);
+             if (key === 'f') ctx.fillRect(x, y, t, sh/2);
+             if (key === 'g') ctx.fillRect(x, y, sw, t);
+        };
+
+        ['a','b','c','d','e','f','g', 'dp'].forEach(k => drawSeg(k, getVal(k)));
+
+
+        // Pins
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
+          
+          ctx.font = "9px system-ui";
+          ctx.fillStyle = "#888";
+          ctx.textAlign = "left";
+          ctx.fillText(p.name, pos.x + 8, pos.y + 3);
+
+          const isHovered = hoveredPin?.pin?.id === p.id;
+          if (isHovered) {
+             ctx.save();
+             ctx.globalAlpha = 0.5;
+             ctx.beginPath();
+             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+             ctx.fillStyle = "#60a5fa";
+             ctx.fill();
+             ctx.restore();
+          }
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+        ctx.textAlign = "left";
+        continue;
+      }
+
       // Draw logic gates with proper shapes
       const isLogicGate = [KIND.AND, KIND.OR, KIND.NOT, KIND.XOR, KIND.NAND, KIND.NOR, KIND.XNOR].includes(c.kind);
 

@@ -92,6 +92,7 @@ export default function Editor() {
                     { kind: KIND.GND, label: "GND", short: "0", hint: "Always LOW" },
                     { kind: KIND.LED, label: "LED", short: "OUT", hint: "Shows signal" },
                     { kind: KIND.PROBE, label: "Probe", short: "DBG", hint: "0/1/X read" },
+                    { kind: KIND.SEVEN_SEGMENT, label: "7-Segment", short: "7SEG", hint: "Display" },
                     { kind: KIND.JUNCTION, label: "Junction", short: "NET", hint: "Split wire" },
                 ],
             },

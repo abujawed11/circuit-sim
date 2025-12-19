@@ -272,6 +272,23 @@ export const makeComponent = (kind, x, y) => {
         ],
       };
 
+    case KIND.SEVEN_SEGMENT:
+      return {
+        ...base,
+        w: 90,
+        h: 130,
+        pins: [
+            pin("a", "in", { side: "left", label: "a" }),
+            pin("b", "in", { side: "left", label: "b" }),
+            pin("c", "in", { side: "left", label: "c" }),
+            pin("d", "in", { side: "left", label: "d" }),
+            pin("e", "in", { side: "left", label: "e" }),
+            pin("f", "in", { side: "left", label: "f" }),
+            pin("g", "in", { side: "left", label: "g" }),
+            pin("dp", "in", { side: "left", label: "dp" }),
+        ]
+      };
+
 
     default:
       return base;
