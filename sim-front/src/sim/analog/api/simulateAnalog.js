@@ -2,7 +2,28 @@
 
 import { buildNodes } from "../netlist/buildNodes";
 import { toSpiceNetlist } from "../netlist/toSpiceNetlist";
-import { ANALOG_KIND } from "../model/analogTypes";
+import { ANALOG_KIND, ANALOG_PART_DEFS } from "../model/analogTypes";
+
+/**
+ * Get a friendly component name for warnings/errors.
+ * Shows ref if available, otherwise component type + shortened ID.
+ *
+ * @param {Object} component - The component object
+ * @returns {string} - Friendly component name
+ */
+function getComponentDisplayName(component) {
+    if (!component) return "Unknown component";
+
+    // If component has a ref, use it
+    if (component.ref) return component.ref;
+
+    // Otherwise, show component type with shortened ID
+    const partDef = ANALOG_PART_DEFS[component.kind];
+    const componentType = partDef?.label || "Component";
+    const shortId = component.id ? `...${component.id.slice(-6)}` : "";
+
+    return shortId ? `${componentType} (${shortId})` : componentType;
+}
 
 /**
  * @typedef {Object} AnalogSimRequest
@@ -183,17 +204,28 @@ export async function simulateAnalog({ analogComponents = [], wires = [], compon
     for (const c of analogComponents || []) {
         if (!c) continue;
 
+        // IMPORTANT: Only validate analog domain components
+        // The caller might pass all circuit.components (including junctions, digital gates, etc.)
+        // We must skip non-analog components to avoid false warnings
+        if (c.domain !== "analog") continue;
+
+        const displayName = getComponentDisplayName(c);
+
         // Missing ref/value warnings (netlist will still generate)
-        if (!c.ref) warnings.push(`Component ${c.id} is missing ref (e.g., R1).`);
+        if (!c.ref) {
+            const partDef = ANALOG_PART_DEFS[c.kind];
+            const exampleRef = partDef?.refPrefix ? `${partDef.refPrefix}1` : "R1";
+            warnings.push(`${displayName} is missing ref (e.g., ${exampleRef}).`);
+        }
         const value = c.props?.value;
         if (c.kind !== ANALOG_KIND.GND && (value === undefined || value === null || value === "")) {
-            warnings.push(`${c.ref || c.id} has empty value.`);
+            warnings.push(`${displayName} has empty value.`);
         }
 
         // Floating pins warning: pin not mapped -> means no wire connection (still ok)
         for (const p of c.pins || []) {
             if (!nodes.pinToNode[p.id]) {
-                warnings.push(`${c.ref || c.id} pin "${p.name}" is not connected (floating).`);
+                warnings.push(`${displayName} pin "${p.name}" is not connected (floating).`);
             }
         }
     }
@@ -206,10 +238,45 @@ export async function simulateAnalog({ analogComponents = [], wires = [], compon
             pinToNode: nodes.pinToNode,
             options: {
                 title: options.title || "Analog Circuit",
+                analysis: options.analysis,
             },
         });
     } catch (e) {
         errors.push(`Failed to build netlist: ${e?.message || String(e)}`);
+    }
+
+    // 5) Send to backend
+    let results = null;
+    if (errors.length === 0) {
+        try {
+            const res = await fetch("http://localhost:8000/api/analog/simulate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    netlist,
+                    analysis: options.analysis || { type: "op" }
+                })
+            });
+            
+            if (!res.ok) {
+                // Try to read error message
+                try {
+                    const errData = await res.json();
+                    if (errData.detail) errors.push(errData.detail);
+                    else if (errData.errors) errors.push(...errData.errors);
+                    else errors.push(`Backend status ${res.status}`);
+                } catch {
+                    errors.push(`Backend status ${res.status}`);
+                }
+            } else {
+                results = await res.json();
+                if (!results.ok) {
+                    errors.push(...(results.errors || []));
+                }
+            }
+        } catch (e) {
+            warnings.push("Backend unreachable (is python server running?). Showing netlist only.");
+        }
     }
 
     return {
@@ -218,6 +285,6 @@ export async function simulateAnalog({ analogComponents = [], wires = [], compon
         nodes,
         warnings,
         errors,
-        results: null, // reserved for backend waveforms later
+        results, 
     };
 }

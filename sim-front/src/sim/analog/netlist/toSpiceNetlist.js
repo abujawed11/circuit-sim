@@ -200,6 +200,34 @@ export function toSpiceNetlist({
     }
   }
 
+  // --- Analysis Commands ---
+  const analysis = options.analysis || { type: "op" };
+
+  if (analysis.type === "op") {
+    lines.push(".op");
+  } else if (analysis.type === "tran") {
+    const step = analysis.tran?.step || "1u";
+    const stop = analysis.tran?.stop || "10m";
+
+    // Collect all unique nodes to probe
+    const uniqueNodes = new Set(Object.values(pinToNode));
+    uniqueNodes.delete(SPICE_GROUND_NODE); // Don't probe ground explicitly usually
+
+    // If no nodes, we can't probe much, but run anyway
+    const signals = Array.from(uniqueNodes).map(n => `v(${n})`).join(" ");
+
+    lines.push(".control");
+    // Add "uic" (use initial conditions) to skip DC operating point calculation
+    // This makes capacitors start uncharged and inductors start with zero current
+    // producing actual transient waveforms instead of flat DC steady-state values
+    lines.push(`tran ${step} ${stop} uic`);
+    if (signals) {
+      lines.push(`wrdata out.csv ${signals}`);
+    }
+    lines.push("quit");
+    lines.push(".endc");
+  }
+
   lines.push(".end");
   return lines.join("\n");
 }

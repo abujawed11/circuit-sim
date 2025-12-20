@@ -6,6 +6,7 @@ import { makeAnalogComponent, resetAnalogRefCounters } from "../analog/model/ana
 import Canvas from "./Canvas";
 import ICCreationDialog from "./ICCreationDialog";
 import PropertiesPanel from "./PropertiesPanel";
+import AnalogResultsPanel from "./AnalogResultsPanel";
 import { simulate } from "../engine/simulate";
 import { simulateAnalog } from "../analog/api/simulateAnalog";
 import { ANALOG_DOMAIN } from "../analog/model/analogTypes"; // "analog"
@@ -73,6 +74,32 @@ export default function Editor() {
     });
 
     const [propertiesSelection, setPropertiesSelection] = useState(null); // { compIds: [id], wireIds: [] } | null
+    const [analogResult, setAnalogResult] = useState(null);
+
+    const updateAnalogAnalysis = (updates) => {
+        const next = structuredClone(circuit);
+        next.analogAnalysis = { ...next.analogAnalysis, ...updates };
+        if (updates.tran) {
+             next.analogAnalysis.tran = { ...next.analogAnalysis.tran, ...updates.tran };
+        }
+        updateCircuit(next);
+    };
+
+    const runAnalog = async () => {
+        setAnalogResult(null);
+        // Ensure defaults if missing (for old saves)
+        const analysis = circuit.analogAnalysis || { type: "op", tran: { step: "1u", stop: "10m" } };
+        
+        const res = await simulateAnalog({
+            analogComponents: circuit.components,
+            wires: circuit.wires,
+            components: circuit.components,
+            options: {
+                analysis
+            }
+        });
+        setAnalogResult(res);
+    };
 
 
     // Put this inside your Editor component:
@@ -1486,6 +1513,55 @@ export default function Editor() {
                         </div>
                     ))}
 
+                    {/* Analog Analysis Controls */}
+                    <div className="mb-4 rounded-xl border border-neutral-800 bg-neutral-900/60 p-3 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="text-xs font-semibold text-neutral-300">Analog Analysis</div>
+                            <div className="text-[10px] text-yellow-500 font-mono">ngspice</div>
+                        </div>
+                        
+                        <div className="flex gap-2">
+                            <select 
+                                value={circuit.analogAnalysis?.type || "op"}
+                                onChange={(e) => updateAnalogAnalysis({ type: e.target.value })}
+                                className="flex-1 bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
+                            >
+                                <option value="op">Operating Point (.op)</option>
+                                <option value="tran">Transient (.tran)</option>
+                            </select>
+                        </div>
+
+                        {circuit.analogAnalysis?.type === "tran" && (
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-[10px] text-neutral-500 block mb-0.5">Step</label>
+                                    <input 
+                                        type="text" 
+                                        value={circuit.analogAnalysis?.tran?.step || "1u"}
+                                        onChange={(e) => updateAnalogAnalysis({ tran: { step: e.target.value } })}
+                                        className="w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] text-neutral-500 block mb-0.5">Stop</label>
+                                    <input 
+                                        type="text" 
+                                        value={circuit.analogAnalysis?.tran?.stop || "10m"}
+                                        onChange={(e) => updateAnalogAnalysis({ tran: { stop: e.target.value } })}
+                                        className="w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <button 
+                            onClick={runAnalog}
+                            className="w-full rounded bg-yellow-600 hover:bg-yellow-500 text-black font-semibold text-xs py-1.5 transition-colors"
+                        >
+                            Run Analog
+                        </button>
+                    </div>
+
                     <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-300 leading-relaxed">
                         <div className="font-semibold text-neutral-200 mb-1">Quick tips</div>
                         <div>• Click a component then click canvas to place</div>
@@ -1631,6 +1707,11 @@ export default function Editor() {
                     onCreate={handleCreateIC}
                     selection={icCreationDialog?.selection}
                     circuit={circuit}
+                />
+
+                <AnalogResultsPanel 
+                    result={analogResult} 
+                    onClose={() => setAnalogResult(null)} 
                 />
 
             </div>

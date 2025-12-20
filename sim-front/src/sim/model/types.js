@@ -47,6 +47,10 @@ export const makeEmptyCircuit = () => ({
   components: [],
   wires: [],
   icDefinitions: [], // Array of IC definitions
+  analogAnalysis: {
+      type: "op",
+      tran: { step: "1u", stop: "10m" },
+  },
 });
 
 // IC Definition structure
