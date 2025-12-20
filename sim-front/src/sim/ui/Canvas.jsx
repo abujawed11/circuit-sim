@@ -23,15 +23,37 @@ const pinDot = (ctx, x, y, v) => {
   ctx.stroke();
 };
 
+// const analogLabel = (c) => {
+//   const value = c?.props?.value;
+//   if (c?.kind === ANALOG_KIND.GND) return "GND";
+//   if (c?.kind === ANALOG_KIND.VDC) return `VDC ${value ?? ""}`.trim();
+//   if (c?.kind === ANALOG_KIND.R) return `R ${value ?? ""}`.trim();
+//   if (c?.kind === ANALOG_KIND.C) return `C ${value ?? ""}`.trim();
+//   if (c?.kind === ANALOG_KIND.L) return `L ${value ?? ""}`.trim();
+//   return `${c?.kind ?? "Analog"}`;
+// };
+
 const analogLabel = (c) => {
-  const value = c?.props?.value;
+  const ref = c?.ref;                 // R3, R4, V2...
+  const value = c?.props?.value;      // "1k", "5", ...
+
   if (c?.kind === ANALOG_KIND.GND) return "GND";
+
+  // Prefer showing ref if present (because it’s unique & matches netlist)
+  if (ref) {
+    // Example: "R3 1k", "V2 DC 5"
+    if (c?.kind === ANALOG_KIND.VDC) return `${ref} DC ${value ?? ""}`.trim();
+    return `${ref} ${value ?? ""}`.trim();
+  }
+
+  // Fallback (should rarely happen)
   if (c?.kind === ANALOG_KIND.VDC) return `VDC ${value ?? ""}`.trim();
   if (c?.kind === ANALOG_KIND.R) return `R ${value ?? ""}`.trim();
   if (c?.kind === ANALOG_KIND.C) return `C ${value ?? ""}`.trim();
   if (c?.kind === ANALOG_KIND.L) return `L ${value ?? ""}`.trim();
   return `${c?.kind ?? "Analog"}`;
 };
+
 
 // const snap = (n) => Math.round(n / GRID) * GRID;
 const snap = (n) => n;

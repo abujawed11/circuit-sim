@@ -7,6 +7,8 @@ import Canvas from "./Canvas";
 import ICCreationDialog from "./ICCreationDialog";
 import PropertiesPanel from "./PropertiesPanel";
 import { simulate } from "../engine/simulate";
+import { simulateAnalog } from "../analog/api/simulateAnalog";
+import { ANALOG_DOMAIN } from "../analog/model/analogTypes"; // "analog"
 
 const palette = [
     { kind: KIND.INPUT, label: "Input" },
@@ -71,6 +73,51 @@ export default function Editor() {
     });
 
     const [propertiesSelection, setPropertiesSelection] = useState(null); // { compIds: [id], wireIds: [] } | null
+
+
+    // Put this inside your Editor component:
+    const handleTestAnalog = async () => {
+        try {
+            const analogComponents = (circuit.components || []).filter(
+                (c) => c?.domain === ANALOG_DOMAIN
+            );
+
+            if (analogComponents.length === 0) {
+                alert("No analog components found. Place R/C/L/VDC/GND first.");
+                return;
+            }
+
+            const res = await simulateAnalog({
+                analogComponents,
+                wires: circuit.wires || [],
+                options: { title: "Analog Frontend Test" },
+            });
+
+            // Pretty debug output
+            console.group("🔌 Analog Test (Frontend Only)");
+            console.log("ok:", res.ok);
+            if (res.errors?.length) console.error("Errors:", res.errors);
+            if (res.warnings?.length) console.warn("Warnings:", res.warnings);
+
+            console.log("Pin → Node map:", res.nodes?.pinToNode);
+            console.log("Nets:", res.nodes?.nets);
+            console.log("Netlist:\n" + res.netlist);
+            console.groupEnd();
+
+            // Quick UI feedback
+            if (!res.ok) {
+                alert("Analog netlist build failed.\n\n" + (res.errors || []).join("\n"));
+                return;
+            }
+
+            // Optional: show netlist quickly
+            alert(res.netlist);
+        } catch (e) {
+            console.error("Analog test crashed:", e);
+            alert("Analog test crashed: " + (e?.message || String(e)));
+        }
+    };
+
 
 
     // Auto-save circuit to localStorage whenever it changes
@@ -714,7 +761,9 @@ export default function Editor() {
         const next = structuredClone(circuit);
 
         if (typeof kind === "string" && kind.startsWith("A_")) {
-            next.components.push(makeAnalogComponent(kind, x, y));
+            // next.components.push(makeAnalogComponent(kind, x, y));
+            next.components.push(makeAnalogComponent(kind, x, y, next.components));
+
             updateCircuit(next);
             return;
         }
@@ -1463,6 +1512,8 @@ export default function Editor() {
                     >
                         ⚡ Create IC from Selection
                     </button>
+                    <button onClick={handleTestAnalog}>Test Analog Netlist</button>
+
                     <div className="grid grid-cols-2 gap-2">
                         <button
                             onClick={undo}
