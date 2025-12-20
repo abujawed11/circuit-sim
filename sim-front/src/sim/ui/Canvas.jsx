@@ -87,6 +87,8 @@ const drawInverterBubble = (ctx, x, y, radius = 5) => {
 export default function Canvas({
   circuit,
   onPlace,
+  onAddJunction,
+  onAddJunctionAndConnect,
   onToggleInput,
   onConnectPins,
   onMoveComponent,
@@ -1634,13 +1636,24 @@ if (c.kind === KIND.TIMER_555) {
         const points = Array.isArray(hitW.points) ? hitW.points : [];
         const segIndex = Math.max(0, Math.min(points.length, Math.floor(t)));
 
-        const junctionInPinId = onSplitWire(hitW.id, snapped, {
+        const junction = onSplitWire(hitW.id, snapped, {
           beforePoints: points.slice(0, segIndex),
           afterPoints: points.slice(segIndex),
         });
 
-        if (junctionInPinId) {
-          tryConnectPins(draft.fromPinId, junctionInPinId, draft.points);
+        if (junction) {
+            const fromMeta = getPinMeta(draft.fromPinId);
+            if (fromMeta) {
+                const jIn = junction.pins.find(p => p.name === "IN")?.id;
+                const jOut = junction.pins.find(p => p.name === "OUT")?.id;
+                
+                // If drafting from OUT, connect to IN. If from IN, connect to OUT.
+                const targetPinId = fromMeta.pin.dir === "out" ? jIn : jOut;
+                
+                if (targetPinId) {
+                    tryConnectPins(draft.fromPinId, targetPinId, draft.points);
+                }
+            }
         }
         setDraft(null);
         return;
@@ -1680,6 +1693,18 @@ if (c.kind === KIND.TIMER_555) {
   const onContextMenu = (e) => {
     e.preventDefault();
     const { x, y } = toLocal(e);
+    
+    // Finish drafting on right click
+    if (draft) {
+        const sx = snap(x);
+        const sy = snap(y);
+        
+        if (typeof onAddJunctionAndConnect === "function") {
+            onAddJunctionAndConnect(sx, sy, draft.fromPinId, draft.points);
+        }
+        setDraft(null);
+        return;
+    }
 
     // Clear hover states
     setHoveredPin(null);

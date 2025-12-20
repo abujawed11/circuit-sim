@@ -691,10 +691,19 @@ export default function Editor() {
         }
     };
 
+    const onAddJunction = (x, y) => {
+        const next = structuredClone(circuit);
+        // Create junction centered at x,y
+        const junction = makeComponent(KIND.JUNCTION, x - 10, y - 10);
+        next.components.push(junction);
+        updateCircuit(next);
+        return junction;
+    };
+
     const onSplitWire = (wireId, point, split = null) => {
         const next = structuredClone(circuit);
         const wire = next.wires.find((w) => w.id === wireId);
-        if (!wire) return;
+        if (!wire) return null;
 
         // Create junction centered at the clicked point (junction is 20x20)
         const junction = makeComponent(KIND.JUNCTION, point.x - 10, point.y - 10);
@@ -715,7 +724,7 @@ export default function Editor() {
             points: afterPoints,
         });
         updateCircuit(next);
-        return junction.pins[0].id; // IN pin
+        return junction;
     };
 
     const onSplitWireAndStartDraft = (wireId, point, split = null) => {
@@ -743,6 +752,58 @@ export default function Editor() {
         });
         updateCircuit(next);
         return junction.pins[1].id;
+    };
+
+    const onAddJunctionAndConnect = (x, y, fromPinId, points) => {
+        const next = structuredClone(circuit);
+        
+        // 1. Create Junction
+        const junction = makeComponent(KIND.JUNCTION, x - 10, y - 10);
+        next.components.push(junction);
+        
+        // 2. Find source pin meta to determine direction
+        const findPinMeta = (pinId) => {
+             for (const c of next.components) {
+                const p = c.pins.find((pp) => pp.id === pinId);
+                if (p) return { comp: c, pin: p };
+            }
+            return null;
+        }
+
+        const sourceMeta = findPinMeta(fromPinId);
+        if (!sourceMeta) return;
+
+        const jIn = junction.pins.find(p => p.name === "IN");
+        const jOut = junction.pins.find(p => p.name === "OUT");
+        
+        let targetPinId;
+        if (sourceMeta.pin.dir === "out") targetPinId = jIn.id;
+        else targetPinId = jOut.id;
+
+        // 3. Connect wire
+        let wireFrom, wireTo;
+        let finalPoints = points;
+
+        if (sourceMeta.pin.dir === "out") {
+            wireFrom = fromPinId;
+            wireTo = targetPinId;
+        } else {
+            // Source is IN, so we are connecting FROM the junction TO the source
+            // And we must reverse points because points were drawn from Source -> Junction
+            wireFrom = targetPinId;
+            wireTo = fromPinId;
+            finalPoints = [...points].reverse();
+        }
+
+        next.wires.push({
+            id: uid(),
+            fromPinId: wireFrom,
+            toPinId: wireTo,
+            points: finalPoints,
+        });
+
+        updateCircuit(next);
+        return junction;
     };
 
     const onDragOver = (e) => {
@@ -1037,6 +1098,8 @@ export default function Editor() {
                 <Canvas
                     circuit={simulated}
                     onPlace={addAt}
+                    onAddJunction={onAddJunction}
+                    onAddJunctionAndConnect={onAddJunctionAndConnect}
                     onToggleInput={toggleInput}
                     onConnectPins={connectPins}
                     onMoveComponent={moveComponent}
