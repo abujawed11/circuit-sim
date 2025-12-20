@@ -417,6 +417,24 @@ export default function Editor() {
         }
     };
 
+    const moveComponents = (moves, addToHistory = true) => {
+        if (!Array.isArray(moves) || moves.length === 0) return;
+        const next = structuredClone(circuit);
+        for (const m of moves) {
+            const compId = m?.compId ?? m?.id;
+            if (!compId) continue;
+            const c = next.components.find((cc) => cc.id === compId);
+            if (!c) continue;
+            if (typeof m.x === "number") c.x = m.x;
+            if (typeof m.y === "number") c.y = m.y;
+        }
+        if (addToHistory) {
+            updateCircuit(next);
+        } else {
+            setCircuit(next);
+        }
+    };
+
     const deleteComponent = (compId) => {
         const next = structuredClone(circuit);
         const comp = next.components.find((c) => c.id === compId);
@@ -1457,6 +1475,7 @@ export default function Editor() {
                     onToggleInput={toggleInput}
                     onConnectPins={connectPins}
                     onMoveComponent={moveComponent}
+                    onMoveComponents={moveComponents}
                     onDeleteComponent={deleteComponent}
                     onDuplicateComponent={duplicateComponent}
                     onDeleteWire={deleteWire}

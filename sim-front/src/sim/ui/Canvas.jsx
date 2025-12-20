@@ -158,6 +158,7 @@ export default function Canvas({
   onToggleInput,
   onConnectPins,
   onMoveComponent,
+  onMoveComponents,
   onDeleteComponent,
   onDuplicateComponent,
   onDeleteWire,
@@ -187,6 +188,7 @@ export default function Canvas({
   const [selectedWireIds, setSelectedWireIds] = useState([]); // Array of wire IDs
 
   const [drag, setDrag] = useState(null); // { compId, dx, dy }
+  const [groupDrag, setGroupDrag] = useState(null); // { items: [{ compId, dx, dy }] }
   const [wireDrag, setWireDrag] = useState(null); // { wireId, dx, dy }
   const [pointDrag, setPointDrag] = useState(null); // { wireId, pointIndex, dx, dy }
   const [selectionBox, setSelectionBox] = useState(null); // { startX, startY, currentX, currentY }
@@ -204,6 +206,28 @@ export default function Canvas({
   const dragMovedRef = React.useRef(false);
   const suppressClickRef = React.useRef(false);
   const dragStartRef = React.useRef({ x: 0, y: 0 });
+
+  const getSelection = () => {
+    const compIds = [...selectedCompIds];
+    const wireIds = [...selectedWireIds];
+    if (selectedCompId && !compIds.includes(selectedCompId)) compIds.push(selectedCompId);
+    if (selectedWireId && !wireIds.includes(selectedWireId)) wireIds.push(selectedWireId);
+    return { compIds, wireIds };
+  };
+
+  const startGroupDrag = (cursorX, cursorY, compIds) => {
+    if (!Array.isArray(compIds) || compIds.length <= 1) return false;
+    const items = compIds
+      .map((id) => {
+        const c = circuit.components.find((cc) => cc.id === id);
+        if (!c) return null;
+        return { compId: id, dx: cursorX - c.x, dy: cursorY - c.y };
+      })
+      .filter(Boolean);
+    if (items.length <= 1) return false;
+    setGroupDrag({ items });
+    return true;
+  };
 
   React.useEffect(() => {
     if (typeof onSelectionChange === "function") {
@@ -1243,6 +1267,21 @@ export default function Canvas({
     if (selectionBox) {
       // Update selection box as user drags
       setSelectionBox({ ...selectionBox, currentX: p.x, currentY: p.y });
+    } else if (groupDrag) {
+      const dx = p.x - dragStartRef.current.x;
+      const dy = p.y - dragStartRef.current.y;
+      if (dx * dx + dy * dy > 4) {
+        dragMovedRef.current = true;
+      }
+
+      if (typeof onMoveComponents === "function") {
+        const moves = groupDrag.items.map((it) => ({
+          compId: it.compId,
+          x: p.x - it.dx,
+          y: p.y - it.dy,
+        }));
+        onMoveComponents(moves, false);
+      }
     } else if (drag) {
       const dx = p.x - dragStartRef.current.x;
       const dy = p.y - dragStartRef.current.y;
@@ -1361,6 +1400,7 @@ export default function Canvas({
 
     const isCtrlOrCmd = e.ctrlKey || e.metaKey;
     const isShift = e.shiftKey;
+    const selection = getSelection();
 
     const hitPoint = hitTestWirePoint(circuit, x, y);
     if (hitPoint) {
@@ -1376,6 +1416,12 @@ export default function Canvas({
 
     const j = hitJunction(circuit, x, y);
     if (j) {
+      if (!isCtrlOrCmd && !isShift && selection.compIds.length > 1 && selection.compIds.includes(j.id)) {
+        if (startGroupDrag(x, y, selection.compIds)) {
+          e.preventDefault();
+          return;
+        }
+      }
       if (isCtrlOrCmd || isShift) {
         // Multi-select: toggle component in selection
         if (selectedCompIds.includes(j.id)) {
@@ -1420,6 +1466,12 @@ export default function Canvas({
 
     const hitComp = hitComponent(circuit, x, y);
     if (hitComp) {
+      if (!isCtrlOrCmd && !isShift && selection.compIds.length > 1 && selection.compIds.includes(hitComp.id)) {
+        if (startGroupDrag(x, y, selection.compIds)) {
+          e.preventDefault();
+          return;
+        }
+      }
       // Handle manual clock pulse (set HIGH on mouse down, will reset on mouse up if no drag)
       if (hitComp.kind === KIND.CLOCK && hitComp.state.mode === "MANUAL") {
         onSetComponentValue(hitComp.id, LV.HIGH);
@@ -1532,6 +1584,17 @@ export default function Canvas({
       setActiveButtonId(null);
     }
 
+    if (groupDrag && dragMovedRef.current) {
+      suppressClickRef.current = true;
+      if (typeof onMoveComponents === "function") {
+        const moves = groupDrag.items.map((it) => ({
+          compId: it.compId,
+          x: p.x - it.dx,
+          y: p.y - it.dy,
+        }));
+        onMoveComponents(moves, true);
+      }
+    }
 
     // Add component move to history when drag ends
     if (drag && dragMovedRef.current) {
@@ -1551,6 +1614,7 @@ export default function Canvas({
     }
 
     setDrag(null);
+    setGroupDrag(null);
     setWireDrag(null);
     setPointDrag(null);
   };
@@ -1697,14 +1761,6 @@ export default function Canvas({
     e.preventDefault();
     const { x, y } = toLocal(e);
 
-    const getSelection = () => {
-      const compIds = [...selectedCompIds];
-      const wireIds = [...selectedWireIds];
-      if (selectedCompId && !compIds.includes(selectedCompId)) compIds.push(selectedCompId);
-      if (selectedWireId && !wireIds.includes(selectedWireId)) wireIds.push(selectedWireId);
-      return { compIds, wireIds };
-    };
-
     // Finish drafting on right click
     if (draft) {
       const sx = snap(x);
@@ -1776,6 +1832,7 @@ export default function Canvas({
       if (e.key === "Escape") {
         setDraft(null);
         setDrag(null);
+        setGroupDrag(null);
         closeMenu();
         // Clear multi-select on Escape
         setSelectedCompIds([]);
@@ -1847,7 +1904,7 @@ export default function Canvas({
       <canvas
         ref={ref}
         style={{
-          cursor: drag || pointDrag
+          cursor: drag || groupDrag || pointDrag
             ? "grabbing"
             : (hoveredComponent || hoveredPin || hoveredJunction)
               ? "pointer"
