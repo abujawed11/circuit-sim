@@ -25,6 +25,70 @@ const pinDot = (ctx, x, y, v) => {
 // const snap = (n) => Math.round(n / GRID) * GRID;
 const snap = (n) => n;
 
+// -------- Color Constants ----------
+const COLORS = {
+  BG_DARK: "#121212",
+  SELECTION_YELLOW: "#FAD90E",
+  HOVER_BLUE: "#60a5fa",
+  VALID_GREEN: "#10b981",
+  INVALID_RED: "#ef4444",
+  BORDER_DARK: "#333",
+  TEXT_LIGHT: "#e5e5e5",
+  TEXT_GRAY: "#aaa",
+  PIN_BORDER: "#111",
+};
+
+// -------- Helper Functions ----------
+
+// Validates if two pins can be connected (opposite directions)
+const isPinConnectionValid = (fromPin, toPin) => {
+  if (!fromPin || !toPin) return true;
+  if (fromPin.dir === "out" && toPin.dir === "in") return true;
+  if (fromPin.dir === "in" && toPin.dir === "out") return true;
+  return false;
+};
+
+// Renders hover highlight on a pin during interaction
+const renderPinHoverHighlight = (ctx, pos, pinDir, draft, getPinMeta, radius = 12, alpha = 0.5) => {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.beginPath();
+  ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+
+  if (draft) {
+    const fromMeta = getPinMeta(draft.fromPinId);
+    const isValid = fromMeta ? isPinConnectionValid(fromMeta.pin, { dir: pinDir }) : true;
+    ctx.fillStyle = isValid ? COLORS.VALID_GREEN : COLORS.INVALID_RED;
+  } else {
+    ctx.fillStyle = COLORS.HOVER_BLUE;
+  }
+
+  ctx.fill();
+  ctx.restore();
+};
+
+// Draws a component box with selection highlighting
+const drawComponentBox = (ctx, x, y, w, h, isSelected, roundRect) => {
+  ctx.fillStyle = COLORS.BG_DARK;
+  ctx.strokeStyle = isSelected ? COLORS.SELECTION_YELLOW : COLORS.BORDER_DARK;
+  ctx.lineWidth = isSelected ? 3 : 2;
+  roundRect(ctx, x, y, w, h, 12);
+  ctx.fill();
+  ctx.stroke();
+};
+
+// Draws a pin with label positioned based on direction
+const drawPinWithLabel = (ctx, pos, pin, value) => {
+  // Draw the pin dot
+  pinDot(ctx, pos.x, pos.y, value);
+
+  // Draw the label
+  ctx.fillStyle = COLORS.TEXT_GRAY;
+  const offset = pin.dir === "in" ? 8 : -8;
+  ctx.textAlign = pin.dir === "in" ? "left" : "right";
+  ctx.fillText(pin.name, pos.x + offset, pos.y + 4);
+};
+
 // Gate drawing functions
 const drawAndGate = (ctx, x, y, w, h) => {
   ctx.beginPath();
@@ -215,7 +279,7 @@ export default function Canvas({
 
       if (isSel) {
         for (const p of pts) {
-          ctx.fillStyle = "#FAD90E";
+          ctx.fillStyle = COLORS.SELECTION_YELLOW;
           ctx.beginPath();
           ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
           ctx.fill();
@@ -375,47 +439,8 @@ export default function Canvas({
                   // Check if this pin is hovered
 
                   const isHovered = hoveredPin?.pin?.id === p.id;
-
-        
-
                   if (isHovered) {
-
-                     ctx.save();
-
-                     ctx.globalAlpha = 0.5;
-
-                     ctx.beginPath();
-
-                     ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-
-                     
-
-                     if (draft) {
-
-                         const fromMeta = getPinMeta(draft.fromPinId);
-
-                         let isValid = true;
-
-                         if (fromMeta) {
-
-                             if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
-
-                             if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
-
-                         }
-
-                         ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
-
-                     } else {
-
-                         ctx.fillStyle = "#60a5fa";
-
-                     }
-
-                     ctx.fill();
-
-                     ctx.restore();
-
+                    renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
                   }
 
         
@@ -468,26 +493,8 @@ export default function Canvas({
 
           // Check if this pin is hovered
           const isHovered = hoveredPin?.pin?.id === p.id;
-
           if (isHovered) {
-             ctx.save();
-             ctx.globalAlpha = 0.5;
-             ctx.beginPath();
-             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-             
-             if (draft) {
-                 const fromMeta = getPinMeta(draft.fromPinId);
-                 let isValid = true;
-                 if (fromMeta) {
-                     if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
-                     if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
-                 }
-                 ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
-             } else {
-                 ctx.fillStyle = "#60a5fa";
-             }
-             ctx.fill();
-             ctx.restore();
+            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
           }
 
           pinDot(ctx, pos.x, pos.y, p.value);
@@ -548,26 +555,8 @@ export default function Canvas({
 
           // Check if this pin is hovered
           const isHovered = hoveredPin?.pin?.id === p.id;
-
           if (isHovered) {
-             ctx.save();
-             ctx.globalAlpha = 0.5;
-             ctx.beginPath();
-             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-             
-             if (draft) {
-                 const fromMeta = getPinMeta(draft.fromPinId);
-                 let isValid = true;
-                 if (fromMeta) {
-                     if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
-                     if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
-                 }
-                 ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
-             } else {
-                 ctx.fillStyle = "#60a5fa";
-             }
-             ctx.fill();
-             ctx.restore();
+            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
           }
 
           pinDot(ctx, pos.x, pos.y, p.value);
@@ -577,12 +566,7 @@ export default function Canvas({
       }
 
       if (c.kind === KIND.PROBE) {
-        ctx.fillStyle = "#121212";
-        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
-        ctx.lineWidth = isSel ? 3 : 2;
-        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-        ctx.fill();
-        ctx.stroke();
+        drawComponentBox(ctx, c.x, c.y, c.w, c.h, isSel, roundRect);
 
         const inPin = c.pins.find((p) => p.name === "IN");
         const v = inPin?.value;
@@ -597,7 +581,7 @@ export default function Canvas({
         ctx.textBaseline = "alphabetic"; // Reset
 
         // Label
-        ctx.fillStyle = "#e5e5e5";
+        ctx.fillStyle = COLORS.TEXT_LIGHT;
         ctx.font = "12px system-ui";
         // Draw pin
         for (const p of c.pins) {
@@ -605,26 +589,8 @@ export default function Canvas({
 
           // Check if this pin is hovered
           const isHovered = hoveredPin?.pin?.id === p.id;
-
           if (isHovered) {
-             ctx.save();
-             ctx.globalAlpha = 0.5;
-             ctx.beginPath();
-             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-             
-             if (draft) {
-                 const fromMeta = getPinMeta(draft.fromPinId);
-                 let isValid = true;
-                 if (fromMeta) {
-                     if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
-                     if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
-                 }
-                 ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
-             } else {
-                 ctx.fillStyle = "#60a5fa";
-             }
-             ctx.fill();
-             ctx.restore();
+            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
           }
 
           pinDot(ctx, pos.x, pos.y, p.value);
@@ -634,12 +600,7 @@ export default function Canvas({
       }
 
       if (c.kind === KIND.CLOCK) {
-        ctx.fillStyle = "#121212";
-        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
-        ctx.lineWidth = isSel ? 3 : 2;
-        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-        ctx.fill();
-        ctx.stroke();
+        drawComponentBox(ctx, c.x, c.y, c.w, c.h, isSel, roundRect);
 
         const v = c.state.value;
         const mode = c.state.mode || "AUTO";
@@ -661,7 +622,7 @@ export default function Canvas({
         ctx.textBaseline = "alphabetic";
 
         // Label
-        ctx.fillStyle = "#e5e5e5";
+        ctx.fillStyle = COLORS.TEXT_LIGHT;
         ctx.font = "12px system-ui";
         ctx.fillText("CLK", c.x + 12, c.y + 18);
 
@@ -671,26 +632,8 @@ export default function Canvas({
 
           // Check if this pin is hovered
           const isHovered = hoveredPin?.pin?.id === p.id;
-
           if (isHovered) {
-             ctx.save();
-             ctx.globalAlpha = 0.5;
-             ctx.beginPath();
-             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-             
-             if (draft) {
-                 const fromMeta = getPinMeta(draft.fromPinId);
-                 let isValid = true;
-                 if (fromMeta) {
-                     if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
-                     if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
-                 }
-                 ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
-             } else {
-                 ctx.fillStyle = "#60a5fa";
-             }
-             ctx.fill();
-             ctx.restore();
+            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
           }
 
           pinDot(ctx, pos.x, pos.y, p.value);
@@ -705,15 +648,10 @@ export default function Canvas({
         c.kind === KIND.JK_FF ||
         c.kind === KIND.T_FF
       ) {
-        ctx.fillStyle = "#121212";
-        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
-        ctx.lineWidth = isSel ? 3 : 2;
-        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-        ctx.fill();
-        ctx.stroke();
+        drawComponentBox(ctx, c.x, c.y, c.w, c.h, isSel, roundRect);
 
         // Title
-        ctx.fillStyle = "#e5e5e5";
+        ctx.fillStyle = COLORS.TEXT_LIGHT;
         ctx.font = "bold 14px system-ui";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -743,20 +681,20 @@ export default function Canvas({
             ctx.stroke();
 
             // Label
-            ctx.fillStyle = "#aaa";
+            ctx.fillStyle = COLORS.TEXT_GRAY;
             ctx.fillText("CLK", c.x + 10, pos.y + 4);
           } else if (p.name === "PRE") {
-            ctx.fillStyle = "#aaa";
+            ctx.fillStyle = COLORS.TEXT_GRAY;
             ctx.textAlign = "center";
             ctx.fillText("PRE", pos.x, pos.y + 12);
             ctx.textAlign = "left";
           } else if (p.name === "CLR") {
-            ctx.fillStyle = "#aaa";
+            ctx.fillStyle = COLORS.TEXT_GRAY;
             ctx.textAlign = "center";
             ctx.fillText("CLR", pos.x, pos.y - 5);
             ctx.textAlign = "left";
           } else {
-            ctx.fillStyle = "#aaa";
+            ctx.fillStyle = COLORS.TEXT_GRAY;
             const offset = p.dir === "in" ? 8 : -8;
             ctx.textAlign = p.dir === "in" ? "left" : "right";
             ctx.fillText(p.name, pos.x + offset, pos.y + 4);
@@ -765,13 +703,7 @@ export default function Canvas({
           // Draw pin dot
           const isHovered = hoveredPin?.pin?.id === p.id;
           if (isHovered) {
-            ctx.save();
-            ctx.globalAlpha = 0.5;
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-            ctx.fillStyle = "#60a5fa";
-            ctx.fill();
-            ctx.restore();
+            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
           }
           pinDot(ctx, pos.x, pos.y, p.value);
         }
@@ -810,13 +742,7 @@ export default function Canvas({
           // hover highlight
           const isHovered = hoveredPin?.pin?.id === p.id;
           if (isHovered) {
-            ctx.save();
-            ctx.globalAlpha = 0.35;
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
-            ctx.fillStyle = "#60a5fa";
-            ctx.fill();
-            ctx.restore();
+            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta, 14, 0.35);
           }
 
           // pin number
@@ -899,13 +825,7 @@ export default function Canvas({
           // Hover highlight
           const isHovered = hoveredPin?.pin?.id === p.id;
           if (isHovered) {
-            ctx.save();
-            ctx.globalAlpha = 0.5;
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-            ctx.fillStyle = "#60a5fa";
-            ctx.fill();
-            ctx.restore();
+            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
           }
 
           pinDot(ctx, pos.x, pos.y, p.value);
@@ -916,15 +836,10 @@ export default function Canvas({
       }
 
       if (c.kind === KIND.MUX || c.kind === KIND.DEMUX) {
-        ctx.fillStyle = "#121212";
-        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
-        ctx.lineWidth = isSel ? 3 : 2;
-        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-        ctx.fill();
-        ctx.stroke();
+        drawComponentBox(ctx, c.x, c.y, c.w, c.h, isSel, roundRect);
 
         // Title
-        ctx.fillStyle = "#e5e5e5";
+        ctx.fillStyle = COLORS.TEXT_LIGHT;
         ctx.font = "bold 14px system-ui";
         ctx.textAlign = "center";
         drawStraightText(
@@ -943,14 +858,14 @@ export default function Canvas({
 
           if (p.name.startsWith("S")) {
             // Selectors at bottom: draw label above pin
-            ctx.fillStyle = "#aaa";
+            ctx.fillStyle = COLORS.TEXT_GRAY;
             ctx.textAlign = "center";
             ctx.textBaseline = "bottom";
             ctx.fillText(p.name, pos.x, pos.y - 4);
             ctx.textBaseline = "alphabetic"; // Reset
           } else {
             // Side pins
-            ctx.fillStyle = "#aaa";
+            ctx.fillStyle = COLORS.TEXT_GRAY;
             const offset = p.dir === "in" ? 8 : -8;
             ctx.textAlign = p.dir === "in" ? "left" : "right";
             ctx.fillText(p.name, pos.x + offset, pos.y + 4);
@@ -959,13 +874,7 @@ export default function Canvas({
           // Draw pin dot
           const isHovered = hoveredPin?.pin?.id === p.id;
           if (isHovered) {
-            ctx.save();
-            ctx.globalAlpha = 0.5;
-            ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-            ctx.fillStyle = "#60a5fa";
-            ctx.fill();
-            ctx.restore();
+            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
           }
           pinDot(ctx, pos.x, pos.y, p.value);
         }
@@ -975,14 +884,9 @@ export default function Canvas({
       }
 
       if (c.kind === KIND.BCD_7SEG) {
-        ctx.fillStyle = "#121212";
-        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
-        ctx.lineWidth = isSel ? 3 : 2;
-        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-        ctx.fill();
-        ctx.stroke();
+        drawComponentBox(ctx, c.x, c.y, c.w, c.h, isSel, roundRect);
 
-        ctx.fillStyle = "#e5e5e5";
+        ctx.fillStyle = COLORS.TEXT_LIGHT;
         ctx.font = "bold 14px system-ui";
         ctx.textAlign = "center";
         drawStraightText(ctx, "BCD -> 7SEG", c.x + c.w / 2, c.y + 20, c);
@@ -992,7 +896,7 @@ export default function Canvas({
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
 
-          ctx.fillStyle = "#aaa";
+          ctx.fillStyle = COLORS.TEXT_GRAY;
           const offset = p.dir === "in" ? 8 : -8;
           ctx.textAlign = p.dir === "in" ? "left" : "right";
           ctx.fillText(p.name, pos.x + offset, pos.y + 4);
@@ -1170,7 +1074,7 @@ export default function Canvas({
         }
 
         // Draw gate label
-        ctx.fillStyle = "#e5e5e5";
+        ctx.fillStyle = COLORS.TEXT_LIGHT;
         ctx.font = "12px system-ui";
         ctx.textAlign = "center";
         drawStraightText(ctx, c.kind, c.x + c.w / 2, c.y + c.h - 8, c);
@@ -1190,7 +1094,7 @@ export default function Canvas({
           ctx.stroke();
 
           // title
-          ctx.fillStyle = "#e5e5e5";
+          ctx.fillStyle = COLORS.TEXT_LIGHT;
           ctx.font = "14px system-ui";
           drawStraightText(ctx, c.kind, c.x + 12, c.y + 22, c);
         }
@@ -1251,29 +1155,7 @@ export default function Canvas({
 
         // Draw hover highlight
         if (isHovered) {
-          ctx.save();
-          ctx.globalAlpha = 0.5;
-          ctx.beginPath();
-          ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-
-          if (draft) {
-            // During draft: show green for valid, red for invalid
-            const fromMeta = getPinMeta(draft.fromPinId);
-            let isValid = true;
-
-            if (fromMeta) {
-              // Valid if directions are opposite (out->in or in->out)
-              if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
-              if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
-            }
-
-            ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
-          } else {
-            // Not drafting: neutral highlight
-            ctx.fillStyle = "#60a5fa";
-          }
-          ctx.fill();
-          ctx.restore();
+          renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
         }
 
         pinDot(ctx, pos.x, pos.y, p.value);
@@ -1298,7 +1180,7 @@ export default function Canvas({
       ctx.fillRect(left, top, width, height);
 
       // Draw border
-      ctx.strokeStyle = "#FAD90E"; // Yellow border
+      ctx.strokeStyle = COLORS.SELECTION_YELLOW; // Yellow border
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 3]); // Dashed line
       ctx.strokeRect(left, top, width, height);
@@ -1306,7 +1188,7 @@ export default function Canvas({
 
       // Draw corner handles
       const handleSize = 6;
-      ctx.fillStyle = "#FAD90E";
+      ctx.fillStyle = COLORS.SELECTION_YELLOW;
       const corners = [
         [left, top],
         [right, top],
