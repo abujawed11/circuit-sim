@@ -1694,6 +1694,14 @@ export default function Canvas({
     e.preventDefault();
     const { x, y } = toLocal(e);
 
+    const getSelection = () => {
+      const compIds = [...selectedCompIds];
+      const wireIds = [...selectedWireIds];
+      if (selectedCompId && !compIds.includes(selectedCompId)) compIds.push(selectedCompId);
+      if (selectedWireId && !wireIds.includes(selectedWireId)) wireIds.push(selectedWireId);
+      return { compIds, wireIds };
+    };
+
     // Finish drafting on right click
     if (draft) {
       const sx = snap(x);
@@ -1710,11 +1718,18 @@ export default function Canvas({
     setHoveredPin(null);
     setHoveredJunction(null);
 
+    let selection = getSelection();
+
     const j = hitJunction(circuit, x, y);
     if (j) {
-      setSelectedCompId(j.id);
-      setSelectedWireId(null);
-      setMenu({ x, y, type: "comp", id: j.id, kind: j.kind });
+      if (!selection.compIds.includes(j.id)) {
+        setSelectedCompId(j.id);
+        setSelectedWireId(null);
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
+        selection = { compIds: [j.id], wireIds: [] };
+      }
+      setMenu({ x, y, type: "comp", id: j.id, kind: j.kind, selection });
       return;
     }
 
@@ -1738,9 +1753,14 @@ export default function Canvas({
 
     const hitComp = hitComponent(circuit, x, y);
     if (hitComp) {
-      setSelectedCompId(hitComp.id);
-      setSelectedWireId(null);
-      setMenu({ x, y, type: "comp", id: hitComp.id, kind: hitComp.kind });
+      if (!selection.compIds.includes(hitComp.id)) {
+        setSelectedCompId(hitComp.id);
+        setSelectedWireId(null);
+        setSelectedCompIds([]);
+        setSelectedWireIds([]);
+        selection = { compIds: [hitComp.id], wireIds: [] };
+      }
+      setMenu({ x, y, type: "comp", id: hitComp.id, kind: hitComp.kind, selection });
       return;
     }
 
@@ -1871,7 +1891,18 @@ export default function Canvas({
                     : "Set to Auto"}
                 </button>
               )}
-              {menu.kind !== KIND.JUNCTION && (
+              {(menu.selection?.compIds?.length || 0) > 1 ? (
+                <button
+                  className="w-full text-left px-3 py-2 hover:bg-neutral-800"
+                  onClick={() => {
+                    onDuplicateComponent(menu.selection.compIds);
+                    closeMenu();
+                  }}
+                >
+                  Duplicate selection ({menu.selection.compIds.length})
+                </button>
+              ) : (
+                menu.kind !== KIND.JUNCTION && (
                 <button
                   className="w-full text-left px-3 py-2 hover:bg-neutral-800"
                   onClick={() => {
@@ -1881,6 +1912,7 @@ export default function Canvas({
                 >
                   Duplicate
                 </button>
+                )
               )}
               <button
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-300"

@@ -429,13 +429,70 @@ export default function Editor() {
         updateCircuit(next);
     };
 
-    const duplicateComponent = (compId) => {
+    const duplicateComponent = (compIdOrIds) => {
+        const ids = Array.isArray(compIdOrIds) ? compIdOrIds : [compIdOrIds];
+        const compIds = [...new Set(ids)].filter(Boolean);
+        if (compIds.length === 0) return;
+
+        const dx = 24;
+        const dy = 24;
+
         const next = structuredClone(circuit);
-        const src = next.components.find((c) => c.id === compId);
-        if (!src) return;
-        const copy = makeComponent(src.kind, src.x + 24, src.y + 24);
-        if (src.kind === KIND.INPUT) copy.state.value = src.state.value;
-        next.components.push(copy);
+        const originalWires = next.wires.slice();
+
+        const pinIdMap = new Map(); // oldPinId -> newPinId
+        const selectedPinIds = new Set();
+
+        const srcComps = compIds
+            .map((id) => next.components.find((c) => c.id === id))
+            .filter(Boolean);
+
+        for (const src of srcComps) {
+            for (const p of src.pins || []) selectedPinIds.add(p.id);
+        }
+
+        const copies = [];
+        for (const src of srcComps) {
+            const copy = structuredClone(src);
+            copy.id = uid();
+            copy.x = (copy.x ?? 0) + dx;
+            copy.y = (copy.y ?? 0) + dy;
+
+            if (copy.kind === "IC_CUSTOM" && copy.state) {
+                copy.state.internalCircuit = null;
+            }
+
+            const srcPins = Array.isArray(src.pins) ? src.pins : [];
+            copy.pins = srcPins.map((p) => ({ ...structuredClone(p), id: uid() }));
+            for (let i = 0; i < srcPins.length; i++) {
+                pinIdMap.set(srcPins[i].id, copy.pins[i].id);
+            }
+
+            copies.push(copy);
+        }
+
+        next.components.push(...copies);
+
+        // Duplicate internal wires (only those fully contained in the selected components)
+        for (const w of originalWires) {
+            if (!selectedPinIds.has(w.fromPinId) || !selectedPinIds.has(w.toPinId)) continue;
+            const fromPinId = pinIdMap.get(w.fromPinId);
+            const toPinId = pinIdMap.get(w.toPinId);
+            if (!fromPinId || !toPinId) continue;
+
+            const points = Array.isArray(w.points)
+                ? w.points.map((pt) => ({ x: pt.x + dx, y: pt.y + dy }))
+                : [];
+
+            next.wires.push({
+                ...structuredClone(w),
+                id: uid(),
+                fromPinId,
+                toPinId,
+                points,
+            });
+        }
+
         updateCircuit(next);
     };
 
