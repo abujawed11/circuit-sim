@@ -3,7 +3,7 @@ import { KIND, LV } from "../model/types";
 
 const PIN_RADIUS = 10;
 const WIRE_HIT_PX = 8;
-const GRID = 24;
+const GRID = 8;
 
 // -------- visuals ----------
 const wireColorForValue = (v) => {
@@ -22,7 +22,8 @@ const pinDot = (ctx, x, y, v) => {
   ctx.stroke();
 };
 
-const snap = (n) => Math.round(n / GRID) * GRID;
+// const snap = (n) => Math.round(n / GRID) * GRID;
+const snap = (n) => n;
 
 // Gate drawing functions
 const drawAndGate = (ctx, x, y, w, h) => {
