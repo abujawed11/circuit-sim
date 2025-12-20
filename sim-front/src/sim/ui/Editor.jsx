@@ -110,13 +110,24 @@ export default function Editor() {
                     { kind: KIND.NOR, label: "NOR", short: "⊽" },
                     { kind: KIND.XNOR, label: "XNOR", short: "≡" },
                     { kind: KIND.BUFFER, label: "Buffer (Delay)", short: "BUF", hint: "Delay line" },
+
+                ],
+            },
+            {
+                title: "Plexers",
+                items: [
                     { kind: "MUX_2", label: "MUX 2:1", short: "MUX", hint: "Select 1 of 2" },
                     { kind: "MUX_4", label: "MUX 4:1", short: "MUX", hint: "Select 1 of 4" },
                     { kind: "MUX_8", label: "MUX 8:1", short: "MUX", hint: "Select 1 of 8" },
                     { kind: "DEMUX_2", label: "DEMUX 1:2", short: "DMX", hint: "Route to 1 of 2" },
                     { kind: "DEMUX_4", label: "DEMUX 1:4", short: "DMX", hint: "Route to 1 of 4" },
                     { kind: "DEMUX_8", label: "DEMUX 1:8", short: "DMX", hint: "Route to 1 of 8" },
+                    { kind: "DECODER_4", label: "Decoder 2:4", short: "DEC", hint: "2 In -> 4 Out" },
+                    { kind: "DECODER_8", label: "Decoder 3:8", short: "DEC", hint: "3 In -> 8 Out" },
+                    { kind: "PRIORITY_ENCODER_4", label: "P-Enc 4:2", short: "ENC", hint: "4 In -> 2 Out" },
+                    { kind: "PRIORITY_ENCODER_8", label: "P-Enc 8:3", short: "ENC", hint: "8 In -> 3 Out" },
                     { kind: KIND.BCD_7SEG, label: "BCD Decoder", short: "7SEG", hint: "0-F -> 7-segment" },
+
                 ],
             },
             {
@@ -718,6 +729,31 @@ export default function Editor() {
                 for (let i = 0; i < size; i++) pins.push({ id: uid(), name: `Y${i}`, dir: "out", value: LV.X });
             }
             comp.pins = pins;
+            next.components.push(comp);
+        } else if (kind.startsWith("DECODER_") || kind.startsWith("PRIORITY_ENCODER_")) {
+            const lastUnderscore = kind.lastIndexOf("_");
+            const baseKind = kind.substring(0, lastUnderscore); // "DECODER" or "PRIORITY_ENCODER"
+            const size = parseInt(kind.substring(lastUnderscore + 1));
+
+            const realKind = baseKind === "DECODER" ? KIND.DECODER : KIND.PRIORITY_ENCODER;
+            const comp = makeComponent(realKind, x, y);
+            comp.props = { size };
+            comp.h = Math.max(80, size * 20 + 20);
+
+            if (realKind === KIND.DECODER) {
+                const inputCount = Math.log2(size);
+                const pins = [];
+                for (let i = 0; i < inputCount; i++) pins.push({ id: uid(), name: `A${i}`, dir: "in", value: LV.X });
+                for (let i = 0; i < size; i++) pins.push({ id: uid(), name: `Y${i}`, dir: "out", value: LV.X });
+                comp.pins = pins;
+            } else {
+                const outputCount = Math.log2(size);
+                const pins = [];
+                for (let i = 0; i < size; i++) pins.push({ id: uid(), name: `D${i}`, dir: "in", value: LV.X });
+                for (let i = 0; i < outputCount; i++) pins.push({ id: uid(), name: `Q${i}`, dir: "out", value: LV.X });
+                pins.push({ id: uid(), name: "V", dir: "out", value: LV.X });
+                comp.pins = pins;
+            }
             next.components.push(comp);
         } else {
             next.components.push(makeComponent(kind, x, y));

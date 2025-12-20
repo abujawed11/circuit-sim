@@ -224,6 +224,46 @@ export const makeComponent = (kind, x, y) => {
       };
     }
 
+    case KIND.DECODER: {
+        const size = 4; // Default 2-to-4
+        const inputCount = Math.log2(size);
+        const pins = [];
+        // Inputs A0 (LSB) .. An
+        for (let i = 0; i < inputCount; i++) pins.push(pin(`A${i}`, "in"));
+        // Enable
+        // pins.push(pin("EN", "in")); // Optional, maybe add later?
+        // Outputs Y0 .. Yn
+        for (let i = 0; i < size; i++) pins.push(pin(`Y${i}`, "out"));
+        
+        return {
+            ...base,
+            w: 100,
+            h: Math.max(80, size * 20 + 20),
+            props: { size },
+            pins
+        };
+    }
+
+    case KIND.PRIORITY_ENCODER: {
+        const size = 4; // Default 4-to-2
+        const outputCount = Math.log2(size);
+        const pins = [];
+        // Inputs D0 .. Dn
+        for (let i = 0; i < size; i++) pins.push(pin(`D${i}`, "in"));
+        // Outputs Q0 .. Qm
+        for (let i = 0; i < outputCount; i++) pins.push(pin(`Q${i}`, "out"));
+        // Valid
+        pins.push(pin("V", "out"));
+
+        return {
+            ...base,
+            w: 100,
+            h: Math.max(80, size * 20 + 20),
+            props: { size },
+            pins
+        };
+    }
+
     case KIND.TIMER_555:
       return {
         ...base,

@@ -859,16 +859,28 @@ export default function Canvas({
         continue;
       }
 
-      if (c.kind === KIND.MUX || c.kind === KIND.DEMUX) {
-        drawComponentBox(ctx, c.x, c.y, c.w, c.h, isSel, roundRect);
+      if (c.kind === KIND.MUX || c.kind === KIND.DEMUX || c.kind === KIND.DECODER || c.kind === KIND.PRIORITY_ENCODER) {
+        ctx.fillStyle = "#121212";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+        ctx.fill();
+        ctx.stroke();
 
         // Title
-        ctx.fillStyle = COLORS.TEXT_LIGHT;
+        ctx.fillStyle = "#e5e5e5";
         ctx.font = "bold 14px system-ui";
         ctx.textAlign = "center";
+        
+        let label = "";
+        if (c.kind === KIND.MUX) label = `MUX ${c.props.size}:1`;
+        else if (c.kind === KIND.DEMUX) label = `DEMUX 1:${c.props.size}`;
+        else if (c.kind === KIND.DECODER) label = `DEC ${Math.log2(c.props.size)}:${c.props.size}`;
+        else if (c.kind === KIND.PRIORITY_ENCODER) label = `P-ENC ${c.props.size}:${Math.log2(c.props.size)}`;
+
         drawStraightText(
           ctx,
-          c.kind === KIND.MUX ? `MUX ${c.props.size}:1` : `DEMUX 1:${c.props.size}`,
+          label,
           c.x + c.w / 2,
           c.y + 20,
           c
@@ -880,16 +892,16 @@ export default function Canvas({
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
 
-          if (p.name.startsWith("S")) {
-            // Selectors at bottom: draw label above pin
-            ctx.fillStyle = COLORS.TEXT_GRAY;
+          if ((c.kind === KIND.MUX || c.kind === KIND.DEMUX) && p.name.startsWith("S")) {
+            // Selectors at bottom for MUX/DEMUX
+            ctx.fillStyle = "#aaa";
             ctx.textAlign = "center";
             ctx.textBaseline = "bottom";
             ctx.fillText(p.name, pos.x, pos.y - 4);
             ctx.textBaseline = "alphabetic"; // Reset
           } else {
             // Side pins
-            ctx.fillStyle = COLORS.TEXT_GRAY;
+            ctx.fillStyle = "#aaa";
             const offset = p.dir === "in" ? 8 : -8;
             ctx.textAlign = p.dir === "in" ? "left" : "right";
             ctx.fillText(p.name, pos.x + offset, pos.y + 4);
@@ -898,7 +910,7 @@ export default function Canvas({
           // Draw pin dot
           const isHovered = hoveredPin?.pin?.id === p.id;
           if (isHovered) {
-            renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
+             renderPinHoverHighlight(ctx, pos, p.dir, draft, getPinMeta);
           }
           pinDot(ctx, pos.x, pos.y, p.value);
         }

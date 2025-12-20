@@ -599,6 +599,72 @@ export const simulate = (circuit, preSimulate = null) => {
         }
       }
 
+      if (c.kind === KIND.DECODER) {
+          const size = c.props.size || 4;
+          const inputCount = Math.log2(size);
+          
+          let idx = 0;
+          let valid = true;
+          for (let i = 0; i < inputCount; i++) {
+              const val = inPins.find(p => p.name === `A${i}`)?.value ?? LV.X;
+              if (val === LV.X) {
+                  valid = false;
+                  break;
+              }
+              if (val === LV.HIGH) idx |= (1 << i);
+          }
+
+          for (let i = 0; i < size; i++) {
+              setOut(`Y${i}`, !valid ? LV.X : (i === idx ? LV.HIGH : LV.LOW));
+          }
+      }
+
+      if (c.kind === KIND.PRIORITY_ENCODER) {
+          const size = c.props.size || 4;
+          const outputCount = Math.log2(size);
+          
+          let foundIdx = -1;
+          let seenX = false;
+          
+          // Priority: Highest index first
+          for (let i = size - 1; i >= 0; i--) {
+              const val = inPins.find(p => p.name === `D${i}`)?.value ?? LV.X;
+              if (val === LV.HIGH) {
+                  foundIdx = i;
+                  break; // Found highest priority HIGH
+              }
+              if (val === LV.X) {
+                  seenX = true;
+                  // Don't break, keep looking for a definitive HIGH that might be overridden by this X?
+                  // Wait, if D3 is X, and D2 is HIGH. D3 might be HIGH (overriding D2) or LOW (D2 valid).
+                  // So if we see X, and haven't found a HIGH yet, any subsequent HIGH is uncertain.
+                  break; 
+              }
+          }
+          
+          let validOut = LV.LOW;
+          let qVal = 0;
+          let qUnknown = false;
+
+          if (seenX) {
+              // Ambiguous because an X occurred before any HIGH, or was the highest 'active' signal
+              validOut = LV.X;
+              qUnknown = true;
+          } else if (foundIdx !== -1) {
+              validOut = LV.HIGH;
+              qVal = foundIdx;
+          } else {
+              // All LOW
+              validOut = LV.LOW;
+              qVal = 0; // standard to set Q=0 when V=0, though strictly don't care
+          }
+          
+          setOut("V", validOut);
+          for (let i = 0; i < outputCount; i++) {
+              setOut(`Q${i}`, qUnknown ? LV.X : ((qVal >> i) & 1 ? LV.HIGH : LV.LOW));
+          }
+      }
+
       if (c.kind === KIND.BCD_7SEG) {
         const getVal = (n) => inPins.find(p => p.name === n)?.value ?? LV.X;
         const A = getVal("A");
