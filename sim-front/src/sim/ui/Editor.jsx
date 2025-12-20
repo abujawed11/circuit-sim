@@ -439,36 +439,157 @@ export default function Editor() {
         updateCircuit(next);
     };
 
+    // const deleteWire = (wireId) => {
+    //     const next = structuredClone(circuit);
+    //     next.wires = next.wires.filter((w) => w.id !== wireId);
+    //     updateCircuit(next);
+    // };
+
     const deleteWire = (wireId) => {
         const next = structuredClone(circuit);
-        next.wires = next.wires.filter((w) => w.id !== wireId);
+
+        const wire = next.wires.find((w) => w.id === wireId);
+        if (!wire) return;
+
+        const findPinMeta = (pinId) => {
+            for (const c of next.components) {
+                const p = c.pins.find((pp) => pp.id === pinId);
+                if (p) return { comp: c, pin: p };
+            }
+            return null;
+        };
+
+        const A = findPinMeta(wire.fromPinId);
+        const B = findPinMeta(wire.toPinId);
+
+        // Always delete the clicked wire
+        let idsToDelete = new Set([wireId]);
+
+        // ✅ If it's a junction<->junction "bidirectional pair", delete the reverse too
+        if (A?.comp?.kind === KIND.JUNCTION && B?.comp?.kind === KIND.JUNCTION) {
+            // Reverse wire will be: (B.OUT -> A.IN) if current is (A.OUT -> B.IN)
+            const aIn = A.comp.pins.find((p) => p.name === "IN")?.id;
+            const aOut = A.comp.pins.find((p) => p.name === "OUT")?.id;
+            const bIn = B.comp.pins.find((p) => p.name === "IN")?.id;
+            const bOut = B.comp.pins.find((p) => p.name === "OUT")?.id;
+
+            if (aIn && aOut && bIn && bOut) {
+                // Identify which direction this wire is, then compute reverse
+                let revFrom, revTo;
+
+                if (wire.fromPinId === aOut && wire.toPinId === bIn) {
+                    revFrom = bOut;
+                    revTo = aIn;
+                } else if (wire.fromPinId === bOut && wire.toPinId === aIn) {
+                    revFrom = aOut;
+                    revTo = bIn;
+                }
+
+                if (revFrom && revTo) {
+                    const rev = next.wires.find((w) => w.fromPinId === revFrom && w.toPinId === revTo);
+                    if (rev) idsToDelete.add(rev.id);
+                }
+            }
+        }
+
+        next.wires = next.wires.filter((w) => !idsToDelete.has(w.id));
         updateCircuit(next);
     };
 
+
+    // const deleteMultiple = (compIds = [], wireIds = []) => {
+    //     const next = structuredClone(circuit);
+
+    //     // Collect all pin IDs from components to be deleted
+    //     const pinIdsToDelete = new Set();
+    //     compIds.forEach(compId => {
+    //         const comp = next.components.find(c => c.id === compId);
+    //         if (comp) {
+    //             comp.pins.forEach(p => pinIdsToDelete.add(p.id));
+    //         }
+    //     });
+
+    //     // Delete components
+    //     next.components = next.components.filter(c => !compIds.includes(c.id));
+
+    //     // Delete wires (both explicitly selected and connected to deleted components)
+    //     next.wires = next.wires.filter(w =>
+    //         !wireIds.includes(w.id) &&
+    //         !pinIdsToDelete.has(w.fromPinId) &&
+    //         !pinIdsToDelete.has(w.toPinId)
+    //     );
+
+    //     updateCircuit(next);
+    // };
+
     const deleteMultiple = (compIds = [], wireIds = []) => {
         const next = structuredClone(circuit);
+
+        // helper: find comp+pin for a pinId
+        const findPinMeta = (pinId) => {
+            for (const c of next.components) {
+                const p = c.pins.find(pp => pp.id === pinId);
+                if (p) return { comp: c, pin: p };
+            }
+            return null;
+        };
+
+        // Expand wireIds to also include reverse pair for junction<->junction wires
+        const wireIdsToDelete = new Set(wireIds);
+
+        for (const wid of wireIds) {
+            const w = next.wires.find(x => x.id === wid);
+            if (!w) continue;
+
+            const A = findPinMeta(w.fromPinId);
+            const B = findPinMeta(w.toPinId);
+
+            if (A?.comp?.kind !== KIND.JUNCTION || B?.comp?.kind !== KIND.JUNCTION) continue;
+
+            const aIn = A.comp.pins.find(p => p.name === "IN")?.id;
+            const aOut = A.comp.pins.find(p => p.name === "OUT")?.id;
+            const bIn = B.comp.pins.find(p => p.name === "IN")?.id;
+            const bOut = B.comp.pins.find(p => p.name === "OUT")?.id;
+            if (!aIn || !aOut || !bIn || !bOut) continue;
+
+            let revFrom, revTo;
+
+            if (w.fromPinId === aOut && w.toPinId === bIn) {
+                revFrom = bOut; revTo = aIn;
+            } else if (w.fromPinId === bOut && w.toPinId === aIn) {
+                revFrom = aOut; revTo = bIn;
+            } else {
+                continue;
+            }
+
+            const rev = next.wires.find(x => x.fromPinId === revFrom && x.toPinId === revTo);
+            if (rev) wireIdsToDelete.add(rev.id);
+        }
 
         // Collect all pin IDs from components to be deleted
         const pinIdsToDelete = new Set();
         compIds.forEach(compId => {
             const comp = next.components.find(c => c.id === compId);
-            if (comp) {
-                comp.pins.forEach(p => pinIdsToDelete.add(p.id));
-            }
+            if (comp) comp.pins.forEach(p => pinIdsToDelete.add(p.id));
         });
 
         // Delete components
         next.components = next.components.filter(c => !compIds.includes(c.id));
 
-        // Delete wires (both explicitly selected and connected to deleted components)
+        // Delete wires:
+        // - selected wire IDs (plus their reverse pair)
+        // - wires connected to deleted component pins
         next.wires = next.wires.filter(w =>
-            !wireIds.includes(w.id) &&
+            !wireIdsToDelete.has(w.id) &&
             !pinIdsToDelete.has(w.fromPinId) &&
             !pinIdsToDelete.has(w.toPinId)
         );
 
         updateCircuit(next);
     };
+
+
+
 
     const addAt = (x, y, kind) => {
         const next = structuredClone(circuit);
@@ -585,7 +706,7 @@ export default function Editor() {
         if (c) {
             // Update rotation (0..3)
             c.rotate = ((c.rotate || 0) + direction + 4) % 4;
-            
+
             // Swap w/h for 90 degree turns
             // Actually, we don't swap w/h in the model, we just render rotated.
             // BUT, if we swap w/h here, hit testing and pin positioning logic might need less changing?
@@ -606,11 +727,11 @@ export default function Editor() {
                     const next = structuredClone(circuit);
                     let changed = false;
                     for (const id of currentSelection.compIds) {
-                         const c = next.components.find(cc => cc.id === id);
-                         if (c) {
-                             c.rotate = ((c.rotate || 0) + 1) % 4;
-                             changed = true;
-                         }
+                        const c = next.components.find(cc => cc.id === id);
+                        if (c) {
+                            c.rotate = ((c.rotate || 0) + 1) % 4;
+                            changed = true;
+                        }
                     }
                     if (changed) updateCircuit(next);
                 }
@@ -624,9 +745,61 @@ export default function Editor() {
 
     // NEW: connect output pin -> input pin
 
+    // const connectPins = (aPinId, bPinId, points = []) => {
+    //     const next = structuredClone(circuit);
+
+    //     const findPinMeta = (pinId) => {
+    //         for (const c of next.components) {
+    //             const p = c.pins.find((pp) => pp.id === pinId);
+    //             if (p) return { comp: c, pin: p };
+    //         }
+    //         return null;
+    //     };
+
+    //     const A = findPinMeta(aPinId);
+    //     const B = findPinMeta(bPinId);
+    //     if (!A || !B) return;
+
+    //     // ✅ Decide correct direction OUT -> IN regardless of click order
+    //     let fromPinId, toPinId;
+    //     let finalPoints = points;
+
+    //     if (A.pin.dir === "out" && B.pin.dir === "in") {
+    //         fromPinId = aPinId;
+    //         toPinId = bPinId;
+    //         // Pins in correct order, points stay as-is
+    //     } else if (A.pin.dir === "in" && B.pin.dir === "out") {
+    //         fromPinId = bPinId;
+    //         toPinId = aPinId;
+    //         // Pins swapped, reverse points to maintain path
+    //         finalPoints = [...points].reverse();
+    //     } else {
+    //         // IN->IN or OUT->OUT not allowed (prevents blue confusion)
+    //         return;
+    //     }
+
+    //     // Allow multiple wires to same input (like other simulators)
+    //     // Conflicts will be handled in simulation logic
+    //     const exists = next.wires.some(
+    //         (w) => w.fromPinId === fromPinId && w.toPinId === toPinId
+    //     );
+    //     if (!exists) {
+    //         next.wires.push({
+    //             id: uid(),
+    //             fromPinId,
+    //             toPinId,
+    //             points: finalPoints,
+    //         });
+    //     }
+
+    //     updateCircuit(next);
+    // };
+
+
     const connectPins = (aPinId, bPinId, points = []) => {
         const next = structuredClone(circuit);
 
+        // Find which component + pin belongs to a given pinId
         const findPinMeta = (pinId) => {
             for (const c of next.components) {
                 const p = c.pins.find((pp) => pp.id === pinId);
@@ -639,30 +812,59 @@ export default function Editor() {
         const B = findPinMeta(bPinId);
         if (!A || !B) return;
 
-        // ✅ Decide correct direction OUT -> IN regardless of click order
+        const wireExists = (fromPinId, toPinId) =>
+            next.wires.some((w) => w.fromPinId === fromPinId && w.toPinId === toPinId);
+
+        // ✅ SPECIAL CASE: Junction <-> Junction should behave like a simple wire (bidirectional)
+        if (A.comp.kind === KIND.JUNCTION && B.comp.kind === KIND.JUNCTION) {
+            const aIn = A.comp.pins.find((p) => p.name === "IN");
+            const aOut = A.comp.pins.find((p) => p.name === "OUT");
+            const bIn = B.comp.pins.find((p) => p.name === "IN");
+            const bOut = B.comp.pins.find((p) => p.name === "OUT");
+            if (!aIn || !aOut || !bIn || !bOut) return;
+
+            // A -> B
+            if (!wireExists(aOut.id, bIn.id)) {
+                next.wires.push({
+                    id: uid(),
+                    fromPinId: aOut.id,
+                    toPinId: bIn.id,
+                    points,
+                });
+            }
+
+            // B -> A (reverse)
+            if (!wireExists(bOut.id, aIn.id)) {
+                next.wires.push({
+                    id: uid(),
+                    fromPinId: bOut.id,
+                    toPinId: aIn.id,
+                    points: [...points].reverse(),
+                });
+            }
+
+            updateCircuit(next);
+            return;
+        }
+
+        // ✅ Default rule: Only allow OUT -> IN for normal components
         let fromPinId, toPinId;
         let finalPoints = points;
 
         if (A.pin.dir === "out" && B.pin.dir === "in") {
             fromPinId = aPinId;
             toPinId = bPinId;
-            // Pins in correct order, points stay as-is
         } else if (A.pin.dir === "in" && B.pin.dir === "out") {
+            // If user clicked in reverse order, flip it
             fromPinId = bPinId;
             toPinId = aPinId;
-            // Pins swapped, reverse points to maintain path
             finalPoints = [...points].reverse();
         } else {
-            // IN->IN or OUT->OUT not allowed (prevents blue confusion)
+            // IN->IN or OUT->OUT not allowed for normal components
             return;
         }
 
-        // Allow multiple wires to same input (like other simulators)
-        // Conflicts will be handled in simulation logic
-        const exists = next.wires.some(
-            (w) => w.fromPinId === fromPinId && w.toPinId === toPinId
-        );
-        if (!exists) {
+        if (!wireExists(fromPinId, toPinId)) {
             next.wires.push({
                 id: uid(),
                 fromPinId,
@@ -756,14 +958,14 @@ export default function Editor() {
 
     const onAddJunctionAndConnect = (x, y, fromPinId, points) => {
         const next = structuredClone(circuit);
-        
+
         // 1. Create Junction
         const junction = makeComponent(KIND.JUNCTION, x - 10, y - 10);
         next.components.push(junction);
-        
+
         // 2. Find source pin meta to determine direction
         const findPinMeta = (pinId) => {
-             for (const c of next.components) {
+            for (const c of next.components) {
                 const p = c.pins.find((pp) => pp.id === pinId);
                 if (p) return { comp: c, pin: p };
             }
@@ -775,7 +977,7 @@ export default function Editor() {
 
         const jIn = junction.pins.find(p => p.name === "IN");
         const jOut = junction.pins.find(p => p.name === "OUT");
-        
+
         let targetPinId;
         if (sourceMeta.pin.dir === "out") targetPinId = jIn.id;
         else targetPinId = jOut.id;
@@ -832,7 +1034,7 @@ export default function Editor() {
 
         // 2. Connect drafted wire to the new junction
         const findPinMeta = (pinId) => {
-             for (const c of next.components) {
+            for (const c of next.components) {
                 const p = c.pins.find((pp) => pp.id === pinId);
                 if (p) return { comp: c, pin: p };
             }
@@ -843,7 +1045,7 @@ export default function Editor() {
         if (sourceMeta) {
             const jIn = junction.pins.find(p => p.name === "IN");
             const jOut = junction.pins.find(p => p.name === "OUT");
-            
+
             let targetPinId;
             // If drafting from OUT pin, connect to Junction IN
             // If drafting from IN pin, connect to Junction OUT
