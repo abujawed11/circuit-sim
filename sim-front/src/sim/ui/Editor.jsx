@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { KIND, makeEmptyCircuit, LV, uid, makeICDefinition } from "../model/types";
 import { makeComponent } from "../model/gates";
+import { ANALOG_PART_DEFS, ANALOG_KIND } from "../analog/model/analogTypes";
+import { makeAnalogComponent } from "../analog/model/analogParts";
 import Canvas from "./Canvas";
 import ICCreationDialog from "./ICCreationDialog";
 import PropertiesPanel from "./PropertiesPanel";
@@ -142,6 +144,16 @@ export default function Editor() {
 
                 ],
             },
+            {
+                title: "Analog",
+                items: [
+                    { kind: ANALOG_KIND.R, label: ANALOG_PART_DEFS[ANALOG_KIND.R].label, short: "R", hint: ANALOG_PART_DEFS[ANALOG_KIND.R].defaultValue },
+                    { kind: ANALOG_KIND.C, label: ANALOG_PART_DEFS[ANALOG_KIND.C].label, short: "C", hint: ANALOG_PART_DEFS[ANALOG_KIND.C].defaultValue },
+                    { kind: ANALOG_KIND.L, label: ANALOG_PART_DEFS[ANALOG_KIND.L].label, short: "L", hint: ANALOG_PART_DEFS[ANALOG_KIND.L].defaultValue },
+                    { kind: ANALOG_KIND.VDC, label: "VDC", short: "V", hint: ANALOG_PART_DEFS[ANALOG_KIND.VDC].defaultValue },
+                    { kind: ANALOG_KIND.GND, label: "GND", short: "0", hint: "Node 0" },
+                ],
+            },
         ];
 
         // ✅ Add Custom ICs Group
@@ -181,7 +193,27 @@ export default function Editor() {
 
     const simulated = useMemo(() => {
         const clone = structuredClone(circuit);
+        // Keep analog separate from digital simulation:
+        // - simulate() should only see digital pins/wires
+        const analogComponents = clone.components.filter((c) => c?.domain === "analog");
+        const analogPinIds = new Set();
+        for (const c of analogComponents) {
+            for (const p of c?.pins || []) analogPinIds.add(p.id);
+        }
+        const analogWires = clone.wires.filter(
+            (w) => analogPinIds.has(w.fromPinId) || analogPinIds.has(w.toPinId)
+        );
+
+        clone.components = clone.components.filter((c) => c?.domain !== "analog");
+        clone.wires = clone.wires.filter(
+            (w) => !analogPinIds.has(w.fromPinId) && !analogPinIds.has(w.toPinId)
+        );
+
         simulate(clone);
+
+        // Re-attach analog for rendering/editor state (no digital LV propagation into analog)
+        clone.components.push(...analogComponents);
+        clone.wires.push(...analogWires);
         return clone;
     }, [circuit, simTick]);
 
@@ -289,26 +321,27 @@ export default function Editor() {
 
         let changed = false;
         const nextComponents = simulated.components.map((c) => {
-            let nextState = { ...c.state };
+            const state = c.state || {};
+            let nextState = { ...state };
             let hasUpdate = false;
 
-            if (c.state._nextQ !== undefined && c.state._nextQ !== c.state.q) {
-                nextState.q = c.state._nextQ;
+            if (state._nextQ !== undefined && state._nextQ !== state.q) {
+                nextState.q = state._nextQ;
                 delete nextState._nextQ;
                 hasUpdate = true;
             }
             if (
-                c.state._nextLastClk !== undefined &&
-                c.state._nextLastClk !== c.state.lastClk
+                state._nextLastClk !== undefined &&
+                state._nextLastClk !== state.lastClk
             ) {
-                nextState.lastClk = c.state._nextLastClk;
+                nextState.lastClk = state._nextLastClk;
                 delete nextState._nextLastClk;
                 hasUpdate = true;
             }
 
             if (c.kind === KIND.BUFFER) {
                 // ensure queue exists
-                const q = Array.isArray(c.state.queue) ? c.state.queue : [];
+                const q = Array.isArray(state.queue) ? state.queue : [];
                 // Always persist queue so delay advances across frames
                 nextState.queue = q;
                 hasUpdate = true;
@@ -316,9 +349,9 @@ export default function Editor() {
 
             // ✅ NEW: persist 555 monostable state
             if (c.kind === KIND.TIMER_555) {
-                nextState.latch = c.state.latch;
-                nextState.lastTrig = c.state.lastTrig;
-                nextState.monoEndAt = c.state.monoEndAt;
+                nextState.latch = state.latch;
+                nextState.lastTrig = state.lastTrig;
+                nextState.monoEndAt = state.monoEndAt;
                 hasUpdate = true;
             }
 
@@ -679,6 +712,12 @@ export default function Editor() {
 
     const addAt = (x, y, kind) => {
         const next = structuredClone(circuit);
+
+        if (typeof kind === "string" && kind.startsWith("A_")) {
+            next.components.push(makeAnalogComponent(kind, x, y));
+            updateCircuit(next);
+            return;
+        }
 
         if (kind.startsWith("IC_")) {
             const icDefId = kind.replace("IC_", "");
@@ -1223,7 +1262,14 @@ export default function Editor() {
         const canvas = e.target.getBoundingClientRect();
         const x = e.clientX - canvas.left;
         const y = e.clientY - canvas.top;
-        addAt(x - 60, y - 35, kind);
+        if (typeof kind === "string" && kind.startsWith("A_")) {
+            const def = ANALOG_PART_DEFS[kind];
+            const w = def?.size?.w ?? 120;
+            const h = def?.size?.h ?? 70;
+            addAt(x - w / 2, y - h / 2, kind);
+        } else {
+            addAt(x - 60, y - 35, kind);
+        }
     };
 
     const handleCreateIC = (data) => {

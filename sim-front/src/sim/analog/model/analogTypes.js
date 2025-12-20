@@ -2,10 +2,11 @@
 
 export const ANALOG_DOMAIN = "analog";
 
-export const A_KIND = Object.freeze({
-  RESISTOR: "A_RESISTOR",
-  CAPACITOR: "A_CAPACITOR",
-  INDUCTOR: "A_INDUCTOR",
+// Keep kinds SPICE-ish and short (used by UI + netlist builder)
+export const ANALOG_KIND = Object.freeze({
+  R: "A_R",
+  C: "A_C",
+  L: "A_L",
   VDC: "A_VDC",
   GND: "A_GND",
 });
@@ -13,35 +14,35 @@ export const A_KIND = Object.freeze({
 export const SPICE_GROUND_NODE = "0";
 
 export const ANALOG_PART_DEFS = Object.freeze({
-  [A_KIND.RESISTOR]: {
+  [ANALOG_KIND.R]: {
     label: "Resistor",
     refPrefix: "R",
     defaultValue: "1k",     // store SPICE-friendly strings (recommended)
     size: { w: 90, h: 36 },
     pins: ["1", "2"],
   },
-  [A_KIND.CAPACITOR]: {
+  [ANALOG_KIND.C]: {
     label: "Capacitor",
     refPrefix: "C",
     defaultValue: "1u",
     size: { w: 90, h: 36 },
     pins: ["1", "2"],
   },
-  [A_KIND.INDUCTOR]: {
+  [ANALOG_KIND.L]: {
     label: "Inductor",
     refPrefix: "L",
     defaultValue: "1m",
     size: { w: 90, h: 36 },
     pins: ["1", "2"],
   },
-  [A_KIND.VDC]: {
+  [ANALOG_KIND.VDC]: {
     label: "DC Voltage",
     refPrefix: "V",
     defaultValue: "5",
     size: { w: 100, h: 50 },
     pins: ["+", "-"],
   },
-  [A_KIND.GND]: {
+  [ANALOG_KIND.GND]: {
     label: "Ground",
     refPrefix: "0",
     defaultValue: SPICE_GROUND_NODE,
@@ -49,3 +50,6 @@ export const ANALOG_PART_DEFS = Object.freeze({
     pins: [SPICE_GROUND_NODE],
   },
 });
+
+// Back-compat alias (older files used A_KIND.*)
+export const A_KIND = ANALOG_KIND;

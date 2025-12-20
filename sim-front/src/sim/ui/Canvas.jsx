@@ -1,5 +1,6 @@
-import React, { useRef, useState } from "react";
+﻿import React, { useRef, useState } from "react";
 import { KIND, LV } from "../model/types";
+import { ANALOG_DOMAIN, ANALOG_KIND } from "../analog/model/analogTypes";
 
 const PIN_RADIUS = 10;
 const WIRE_HIT_PX = 8;
@@ -20,6 +21,16 @@ const pinDot = (ctx, x, y, v) => {
   ctx.strokeStyle = "#111";
   ctx.lineWidth = 2;
   ctx.stroke();
+};
+
+const analogLabel = (c) => {
+  const value = c?.props?.value;
+  if (c?.kind === ANALOG_KIND.GND) return "GND";
+  if (c?.kind === ANALOG_KIND.VDC) return `VDC ${value ?? ""}`.trim();
+  if (c?.kind === ANALOG_KIND.R) return `R ${value ?? ""}`.trim();
+  if (c?.kind === ANALOG_KIND.C) return `C ${value ?? ""}`.trim();
+  if (c?.kind === ANALOG_KIND.L) return `L ${value ?? ""}`.trim();
+  return `${c?.kind ?? "Analog"}`;
 };
 
 // const snap = (n) => Math.round(n / GRID) * GRID;
@@ -170,7 +181,7 @@ export default function Canvas({
   onSetComponentValue,
   onSetButtonPressed,
   onOpenProperties,
-  onSelectionChange, // ✅ ADD THIS
+  onSelectionChange, // âœ… ADD THIS
 }) {
   const ref = useRef(null);
 
@@ -353,7 +364,46 @@ export default function Canvas({
       // Use basePinPosition for local drawing, since context is rotated
       const pinPosition = (cc, pp) => basePinPosition(cc, pp);
 
-      // ✅ Special rendering for junction (NO box/title/pins)
+      // ---- analog components (visual only) ----
+      if (c.domain === ANALOG_DOMAIN) {
+        // Body
+        ctx.fillStyle = "#0f172a"; // slate-ish
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#334155";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = "#e5e7eb";
+        ctx.font = "bold 12px system-ui";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        drawStraightText(ctx, analogLabel(c), c.x + c.w / 2, c.y + c.h / 2, c);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+
+        // Pins
+        for (const p of c.pins || []) {
+          const pos = pinPosition(c, p);
+          const isHovered = hoveredPin?.pin?.id === p.id;
+          if (isHovered) {
+            ctx.save();
+            ctx.globalAlpha = 0.35;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+            ctx.fillStyle = "#60a5fa";
+            ctx.fill();
+            ctx.restore();
+          }
+          pinDot(ctx, pos.x, pos.y, p.value);
+        }
+
+        ctx.restore();
+        continue;
+      }
+
+      // âœ… Special rendering for junction (NO box/title/pins)
       if (c.kind === KIND.JUNCTION) {
         const inputPin = c.pins.find((p) => p.name === "IN");
         const v = inputPin?.value ?? LV.X;
@@ -736,7 +786,7 @@ export default function Canvas({
         continue;
       }
 
-      // ✅ NEW: 555 Timer IC (clean style: dots only, bigger spacing)
+      // âœ… NEW: 555 Timer IC (clean style: dots only, bigger spacing)
       if (c.kind === KIND.TIMER_555) {
         // chip body
         ctx.fillStyle = "#0b0b0b";
@@ -760,7 +810,7 @@ export default function Canvas({
           const side = p.side || (p.dir === "in" ? "left" : "right");
           const label = (p.label ?? p.name ?? "").toLowerCase();
 
-          // ✅ NEW: draw only dot (no lead lines)
+          // âœ… NEW: draw only dot (no lead lines)
           pinDot(ctx, pos.x, pos.y, p.value);
 
           // hover highlight
@@ -815,7 +865,7 @@ export default function Canvas({
 
 
 
-      // ✅ NEW: Draw Custom ICs
+      // âœ… NEW: Draw Custom ICs
       if (c.kind === "IC_CUSTOM") {
         const icDef = circuit.icDefinitions?.find(d => d.id === c.icDefinitionId);
         const name = icDef ? icDef.name : "UNKNOWN_IC";
@@ -1243,16 +1293,16 @@ export default function Canvas({
     const totalSelected = selectedCompIds.length + selectedWireIds.length;
     if (selectionBox) {
       // Show drag selection hint
-      ctx.fillText("Drag to select multiple items • Release to finalize selection", 14, rect.height - 14);
+      ctx.fillText("Drag to select multiple items â€¢ Release to finalize selection", 14, rect.height - 14);
     } else if (totalSelected > 0) {
       const compText = selectedCompIds.length > 0 ? `${selectedCompIds.length} component${selectedCompIds.length > 1 ? 's' : ''}` : '';
       const wireText = selectedWireIds.length > 0 ? `${selectedWireIds.length} wire${selectedWireIds.length > 1 ? 's' : ''}` : '';
       const parts = [compText, wireText].filter(Boolean);
-      const statusText = `${parts.join(' and ')} selected • Press Delete to remove • Ctrl+A to select all`;
+      const statusText = `${parts.join(' and ')} selected â€¢ Press Delete to remove â€¢ Ctrl+A to select all`;
       ctx.fillText(statusText, 14, rect.height - 14);
     } else {
       ctx.fillText(
-        "Draft wire: click empty to add point • Backspace removes last point • Click IN pin to finish",
+        "Draft wire: click empty to add point â€¢ Backspace removes last point â€¢ Click IN pin to finish",
         14,
         rect.height - 14
       );
@@ -1365,9 +1415,9 @@ export default function Canvas({
   //   if (fromDir === toDir) {
   //     // Invalid: same direction
   //     if (fromDir === "in") {
-  //       showToast("Invalid connection: IN → IN");
+  //       showToast("Invalid connection: IN â†’ IN");
   //     } else {
-  //       showToast("Invalid connection: OUT → OUT");
+  //       showToast("Invalid connection: OUT â†’ OUT");
   //     }
   //     return;
   //   }
@@ -1377,7 +1427,7 @@ export default function Canvas({
   // };
 
 
-  // ✅ Option 2: allow connecting ANY pin to ANY pin (no IN/OUT restriction)
+  // âœ… Option 2: allow connecting ANY pin to ANY pin (no IN/OUT restriction)
   const tryConnectPins = (fromPinId, toPinId, points) => {
     if (!fromPinId || !toPinId) return;
     if (fromPinId === toPinId) return;
@@ -1390,7 +1440,7 @@ export default function Canvas({
     );
     if (already) return;
 
-    // No direction validation here anymore ✅
+    // No direction validation here anymore âœ…
     onConnectPins(fromPinId, toPinId, points);
   };
 
@@ -1648,7 +1698,7 @@ export default function Canvas({
     const sx = snap(x);
     const sy = snap(y);
 
-    // ✅ 0) Junction click handled FIRST (so it doesn't get confused by hitTestPin)
+    // âœ… 0) Junction click handled FIRST (so it doesn't get confused by hitTestPin)
     const j = hitJunction(circuit, x, y);
     if (j) {
       setSelectedCompId(j.id);
@@ -1676,7 +1726,7 @@ export default function Canvas({
 
         // tryConnectPins(draft.fromPinId, targetPinId, draft.points);
 
-        // ✅ Option 2: junction is just a node, no IN/OUT meaning for connections
+        // âœ… Option 2: junction is just a node, no IN/OUT meaning for connections
         const targetPinId = jIn; // or jOut, pick one consistently
         tryConnectPins(draft.fromPinId, targetPinId, draft.points);
         setDraft(null);
@@ -2034,7 +2084,7 @@ export default function Canvas({
                   const wire = circuit.wires.find((w) => w.id === menu.id);
                   if (!wire) return;
 
-                  // ✅ use closest point ON the wire, not where user clicked near it
+                  // âœ… use closest point ON the wire, not where user clicked near it
                   const from = findPinPos(circuit, wire.fromPinId);
                   const to = findPinPos(circuit, wire.toPinId);
                   if (!from || !to) return;
@@ -2346,12 +2396,20 @@ function pinPosition(c, p) {
 }
 
 function basePinPosition(c, p) {
-  // ✅ Junction pins meet exactly at the node center
+  // Analog pins use explicit offset from component center
+  if (c.domain === ANALOG_DOMAIN) {
+    const cx = c.x + c.w / 2;
+    const cy = c.y + c.h / 2;
+    const ox = p?.offset?.x ?? 0;
+    const oy = p?.offset?.y ?? 0;
+    return { x: cx + ox, y: cy + oy };
+  }
+  // âœ… Junction pins meet exactly at the node center
   if (c.kind === KIND.JUNCTION) {
     return { x: c.x + c.w / 2, y: c.y + c.h / 2 };
   }
 
-  // ✅ MUX/DEMUX: Selectors at bottom, others on sides
+  // âœ… MUX/DEMUX: Selectors at bottom, others on sides
   if (c.kind === KIND.MUX || c.kind === KIND.DEMUX) {
     if (p.name.startsWith("S")) {
       const selects = c.pins.filter((pp) => pp.name.startsWith("S"));
@@ -2371,32 +2429,32 @@ function basePinPosition(c, p) {
     }
   }
 
-  // ✅ INPUT: Pin closer to switch
+  // âœ… INPUT: Pin closer to switch
   if (c.kind === KIND.INPUT) {
     return { x: c.x + 54, y: c.y + 30 };
   }
 
-  // ✅ BUTTON: Pin closer to circle
+  // âœ… BUTTON: Pin closer to circle
   if (c.kind === KIND.BUTTON) {
     return { x: c.x + 50, y: c.y + 30 };
   }
 
-  // ✅ LED: Pin on left
+  // âœ… LED: Pin on left
   if (c.kind === KIND.LED) {
     return { x: c.x + 6, y: c.y + 30 };
   }
 
-  // ✅ VCC: Pin on bottom
+  // âœ… VCC: Pin on bottom
   if (c.kind === KIND.VCC) {
     return { x: c.x + c.w / 2, y: c.y + c.h };
   }
 
-  // ✅ GND: Pin on top
+  // âœ… GND: Pin on top
   if (c.kind === KIND.GND) {
     return { x: c.x + c.w / 2, y: c.y };
   }
 
-  // ✅ FF PRE/CLR: Top/Bottom Center
+  // âœ… FF PRE/CLR: Top/Bottom Center
   if ((c.kind === KIND.D_FF || c.kind === KIND.JK_FF || c.kind === KIND.T_FF) && (p.name === "PRE" || p.name === "CLR")) {
     if (p.name === "PRE") return { x: c.x + c.w / 2, y: c.y };
     if (p.name === "CLR") return { x: c.x + c.w / 2, y: c.y + c.h };
@@ -2449,7 +2507,7 @@ function basePinPosition(c, p) {
     }
   }
 
-  // ✅ NEW: explicit pin side support (top/bottom/left/right)
+  // âœ… NEW: explicit pin side support (top/bottom/left/right)
   if (p.side) {
     const group = c.pins.filter(pp => (pp.side || null) === p.side);
     const idx = group.findIndex(pp => pp.id === p.id);
@@ -2485,7 +2543,7 @@ function basePinPosition(c, p) {
 
   let ins = c.pins.filter((pp) => pp.dir === "in");
 
-  // ✅ Fix for Flip-Flops: Exclude special pins from side distribution
+  // âœ… Fix for Flip-Flops: Exclude special pins from side distribution
   if (c.kind === KIND.D_FF || c.kind === KIND.JK_FF || c.kind === KIND.SR_LATCH || c.kind === KIND.T_FF) {
     ins = ins.filter(pp => pp.name !== "PRE" && pp.name !== "CLR");
   }
@@ -2531,6 +2589,3 @@ function hitTestPin(circuit, x, y) {
   }
   return null;
 }
-
-
-

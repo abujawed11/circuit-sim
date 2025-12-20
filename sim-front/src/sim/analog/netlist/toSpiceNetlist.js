@@ -42,7 +42,7 @@ export function toSpiceNetlist({
 
     const pins = c.pins || [];
     const ref = c.ref || c.id;
-    const value = c.value ?? "";
+    const value = c.props?.value ?? "";
 
     // 2-pin passives
     if (c.kind === ANALOG_KIND.R || c.kind === ANALOG_KIND.C || c.kind === ANALOG_KIND.L) {

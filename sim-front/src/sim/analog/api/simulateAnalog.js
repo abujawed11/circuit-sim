@@ -2,6 +2,7 @@
 
 import { buildNodes } from "../netlist/buildNodes";
 import { toSpiceNetlist } from "../netlist/toSpiceNetlist";
+import { ANALOG_KIND } from "../model/analogTypes";
 
 /**
  * @typedef {Object} AnalogSimRequest
@@ -51,7 +52,8 @@ export async function simulateAnalog({ analogComponents = [], wires = [], option
 
     // Missing ref/value warnings (netlist will still generate)
     if (!c.ref) warnings.push(`Component ${c.id} is missing ref (e.g., R1).`);
-    if (c.kind !== "GND" && (c.value === undefined || c.value === null || c.value === "")) {
+    const value = c.props?.value;
+    if (c.kind !== ANALOG_KIND.GND && (value === undefined || value === null || value === "")) {
       warnings.push(`${c.ref || c.id} has empty value.`);
     }
 
