@@ -100,10 +100,13 @@ function makeUniqueRefFn(existingRefs) {
   const used = new Set();
   const maxByPrefix = new Map();
 
-  // Prime from existing refs
+  // Prime maxByPrefix from existing refs to know the max number used
+  // WHY: If circuit has R1, R2, R5, we track max=5 so new refs start at R6
+  // NOTE: We DON'T add to 'used' during priming, because we want to reuse
+  //       the same refs when generating the netlist (R1 stays R1, not R3)
   for (const r of existingRefs) {
     if (!r) continue;
-    used.add(r);
+    // DON'T add to used here - only track the max counter per prefix
 
     const pr = parseRef(r);
     if (pr) {
@@ -114,6 +117,8 @@ function makeUniqueRefFn(existingRefs) {
 
   return (baseRef) => {
     const ref0 = String(baseRef || "").trim() || "X1";
+
+    // If this ref hasn't been used yet in THIS netlist generation, use it as-is
     if (!used.has(ref0)) {
       used.add(ref0);
       const pr = parseRef(ref0);
