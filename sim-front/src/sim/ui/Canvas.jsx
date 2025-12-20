@@ -364,70 +364,71 @@ export default function Canvas({
         ctx.fillText(isOn ? "ON" : "OFF", c.x + 30, c.y + 55);
         ctx.textAlign = "left";
 
-        // Draw pin
+                // Draw pin
 
-        for (const p of c.pins) {
+                for (const p of c.pins) {
 
-          const pos = pinPosition(c, p);
+                  const pos = pinPosition(c, p);
 
+        
 
+                  // Check if this pin is hovered
 
-          // Check if this pin is hovered
+                  const isHovered = hoveredPin?.pin?.id === p.id;
 
-          const isHovered = hoveredPin?.pin?.id === p.id;
+        
 
-          if (isHovered) {
+                  if (isHovered) {
 
-            ctx.save();
+                     ctx.save();
 
-            ctx.globalAlpha = 0.5;
+                     ctx.globalAlpha = 0.5;
 
-            ctx.beginPath();
+                     ctx.beginPath();
 
-            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+                     ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
 
+                     
 
+                     if (draft) {
 
-            if (draft) {
+                         const fromMeta = getPinMeta(draft.fromPinId);
 
-              const fromMeta = getPinMeta(draft.fromPinId);
+                         let isValid = true;
 
-              let isValid = true;
+                         if (fromMeta) {
 
-              if (fromMeta) {
+                             if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
 
-                if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
+                             if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
 
-                if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
+                         }
+
+                         ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+
+                     } else {
+
+                         ctx.fillStyle = "#60a5fa";
+
+                     }
+
+                     ctx.fill();
+
+                     ctx.restore();
+
+                  }
+
+        
+
+                  pinDot(ctx, pos.x, pos.y, p.value);
+
+                }
+
+                ctx.restore();
+
+                continue;
 
               }
-
-              ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
-
-            } else {
-
-              ctx.fillStyle = "#60a5fa";
-
-            }
-
-            ctx.fill();
-
-            ctx.restore();
-
-          }
-
-
-
-          pinDot(ctx, pos.x, pos.y, p.value);
-
-        }
-
-
-
-        ctx.restore();
-        continue;
-
-      }
 
       if (c.kind === KIND.BUTTON) {
         const isPressed = !!c.state.pressed;
@@ -464,6 +465,31 @@ export default function Canvas({
         // Draw pin
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
+
+          // Check if this pin is hovered
+          const isHovered = hoveredPin?.pin?.id === p.id;
+
+          if (isHovered) {
+             ctx.save();
+             ctx.globalAlpha = 0.5;
+             ctx.beginPath();
+             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+             
+             if (draft) {
+                 const fromMeta = getPinMeta(draft.fromPinId);
+                 let isValid = true;
+                 if (fromMeta) {
+                     if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
+                     if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
+                 }
+                 ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+             } else {
+                 ctx.fillStyle = "#60a5fa";
+             }
+             ctx.fill();
+             ctx.restore();
+          }
+
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.restore();
@@ -519,6 +545,31 @@ export default function Canvas({
         // Draw pin
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
+
+          // Check if this pin is hovered
+          const isHovered = hoveredPin?.pin?.id === p.id;
+
+          if (isHovered) {
+             ctx.save();
+             ctx.globalAlpha = 0.5;
+             ctx.beginPath();
+             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+             
+             if (draft) {
+                 const fromMeta = getPinMeta(draft.fromPinId);
+                 let isValid = true;
+                 if (fromMeta) {
+                     if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
+                     if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
+                 }
+                 ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+             } else {
+                 ctx.fillStyle = "#60a5fa";
+             }
+             ctx.fill();
+             ctx.restore();
+          }
+
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.restore();
@@ -548,11 +599,34 @@ export default function Canvas({
         // Label
         ctx.fillStyle = "#e5e5e5";
         ctx.font = "12px system-ui";
-        ctx.fillText("Probe", c.x + 12, c.y + 18);
-
         // Draw pin
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
+
+          // Check if this pin is hovered
+          const isHovered = hoveredPin?.pin?.id === p.id;
+
+          if (isHovered) {
+             ctx.save();
+             ctx.globalAlpha = 0.5;
+             ctx.beginPath();
+             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+             
+             if (draft) {
+                 const fromMeta = getPinMeta(draft.fromPinId);
+                 let isValid = true;
+                 if (fromMeta) {
+                     if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
+                     if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
+                 }
+                 ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+             } else {
+                 ctx.fillStyle = "#60a5fa";
+             }
+             ctx.fill();
+             ctx.restore();
+          }
+
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.restore();
@@ -594,6 +668,31 @@ export default function Canvas({
         // Draw pin
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
+
+          // Check if this pin is hovered
+          const isHovered = hoveredPin?.pin?.id === p.id;
+
+          if (isHovered) {
+             ctx.save();
+             ctx.globalAlpha = 0.5;
+             ctx.beginPath();
+             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+             
+             if (draft) {
+                 const fromMeta = getPinMeta(draft.fromPinId);
+                 let isValid = true;
+                 if (fromMeta) {
+                     if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
+                     if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
+                 }
+                 ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+             } else {
+                 ctx.fillStyle = "#60a5fa";
+             }
+             ctx.fill();
+             ctx.restore();
+          }
+
           pinDot(ctx, pos.x, pos.y, p.value);
         }
         ctx.restore();
