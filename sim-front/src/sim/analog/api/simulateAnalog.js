@@ -38,53 +38,62 @@ import { ANALOG_KIND } from "../model/analogTypes";
  *
  * This should be safe to call often (e.g. on-demand when user clicks "Analog → Export Netlist").
  */
-export async function simulateAnalog({ analogComponents = [], wires = [], options = {} }) {
-  const warnings = [];
-  const errors = [];
+export async function simulateAnalog({ analogComponents = [], wires = [], components = [], options = {} }) {
+    const warnings = [];
+    const errors = [];
 
-  // 1) Build node mapping (pinId -> node)
-  const nodes = buildNodes({ analogComponents, wires });
+    // 1) Build node mapping (pinId -> node)
+    const nodes = buildNodes({ analogComponents, wires, components });
 
-  // 2) Basic validation (lightweight + non-breaking)
-  //    Why: you want helpful messages early, without enforcing too much.
-  for (const c of analogComponents || []) {
-    if (!c) continue;
 
-    // Missing ref/value warnings (netlist will still generate)
-    if (!c.ref) warnings.push(`Component ${c.id} is missing ref (e.g., R1).`);
-    const value = c.props?.value;
-    if (c.kind !== ANALOG_KIND.GND && (value === undefined || value === null || value === "")) {
-      warnings.push(`${c.ref || c.id} has empty value.`);
+    for (const net of nodes.nets || []) {
+        if (net.node === "0") continue;
+        const pinCount = net.pinIds?.length || 0;
+        if (pinCount <= 1) {
+            warnings.push(`Node ${net.node} looks floating (only ${pinCount} connected analog pin).`);
+        }
     }
 
-    // Floating pins warning: pin not mapped -> means no wire connection (still ok)
-    for (const p of c.pins || []) {
-      if (!nodes.pinToNode[p.id]) {
-        warnings.push(`${c.ref || c.id} pin "${p.name}" is not connected (floating).`);
-      }
+    // 2) Basic validation (lightweight + non-breaking)
+    //    Why: you want helpful messages early, without enforcing too much.
+    for (const c of analogComponents || []) {
+        if (!c) continue;
+
+        // Missing ref/value warnings (netlist will still generate)
+        if (!c.ref) warnings.push(`Component ${c.id} is missing ref (e.g., R1).`);
+        const value = c.props?.value;
+        if (c.kind !== ANALOG_KIND.GND && (value === undefined || value === null || value === "")) {
+            warnings.push(`${c.ref || c.id} has empty value.`);
+        }
+
+        // Floating pins warning: pin not mapped -> means no wire connection (still ok)
+        for (const p of c.pins || []) {
+            if (!nodes.pinToNode[p.id]) {
+                warnings.push(`${c.ref || c.id} pin "${p.name}" is not connected (floating).`);
+            }
+        }
     }
-  }
 
-  // 3) Build SPICE netlist text
-  let netlist = "";
-  try {
-    netlist = toSpiceNetlist({
-      analogComponents,
-      pinToNode: nodes.pinToNode,
-      options: {
-        title: options.title || "Analog Circuit",
-      },
-    });
-  } catch (e) {
-    errors.push(`Failed to build netlist: ${e?.message || String(e)}`);
-  }
+    // 3) Build SPICE netlist text
+    let netlist = "";
+    try {
+        netlist = toSpiceNetlist({
+            analogComponents,
+            pinToNode: nodes.pinToNode,
+            options: {
+                title: options.title || "Analog Circuit",
+            },
+        });
+    } catch (e) {
+        errors.push(`Failed to build netlist: ${e?.message || String(e)}`);
+    }
 
-  return {
-    ok: errors.length === 0,
-    netlist,
-    nodes,
-    warnings,
-    errors,
-    results: null, // reserved for backend waveforms later
-  };
+    return {
+        ok: errors.length === 0,
+        netlist,
+        nodes,
+        warnings,
+        errors,
+        results: null, // reserved for backend waveforms later
+    };
 }

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { KIND, makeEmptyCircuit, LV, uid, makeICDefinition } from "../model/types";
 import { makeComponent } from "../model/gates";
 import { ANALOG_PART_DEFS, ANALOG_KIND } from "../analog/model/analogTypes";
-import { makeAnalogComponent } from "../analog/model/analogParts";
+import { makeAnalogComponent, resetAnalogRefCounters } from "../analog/model/analogParts";
 import Canvas from "./Canvas";
 import ICCreationDialog from "./ICCreationDialog";
 import PropertiesPanel from "./PropertiesPanel";
@@ -90,6 +90,7 @@ export default function Editor() {
             const res = await simulateAnalog({
                 analogComponents,
                 wires: circuit.wires || [],
+                components: circuit.components || [],
                 options: { title: "Analog Frontend Test" },
             });
 
@@ -1524,6 +1525,7 @@ export default function Editor() {
                         <button
                             onClick={() => {
                                 if (confirm("Clear entire canvas? This cannot be undone.")) {
+                                    resetAnalogRefCounters();
                                     updateCircuit(makeEmptyCircuit());
                                 }
                             }}

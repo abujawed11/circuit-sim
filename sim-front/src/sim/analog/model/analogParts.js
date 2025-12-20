@@ -117,6 +117,14 @@ export function seedAnalogRefCounters(existingComponents = []) {
 }
 
 /**
+ * Reset module-level ref counters so a new circuit starts at R1/C1/V1...
+ */
+export function resetAnalogRefCounters() {
+  refCounters.clear();
+  countersSeeded = false;
+}
+
+/**
  * Generate next unique ref for a given prefix (R/C/L/V).
  */
 const nextRef = (prefix) => {

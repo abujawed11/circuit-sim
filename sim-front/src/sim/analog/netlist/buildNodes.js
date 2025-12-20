@@ -238,7 +238,7 @@ function collectAnalogPinIds(analogComponents) {
  * Build nodes for analog pins, but include any "junction pins" that are connected
  * to the analog network through wires.
  */
-export function buildNodes({ analogComponents = [], wires = [] }) {
+export function buildNodes({ analogComponents = [], wires = [], components = [] }) {
   const { analogPinIds, gndPinIds } = collectAnalogPinIds(analogComponents);
 
   // 1) Build adjacency for ALL wire endpoints (includes junction pins)
@@ -255,6 +255,17 @@ export function buildNodes({ analogComponents = [], wires = [] }) {
     const [a, b] = getWirePinIds(w);
     if (!a || !b) continue;
     allWirePairs.push([a, b]);
+    addEdge(a, b);
+  }
+
+  // Include internal junction connectivity (junction IN/OUT pins are same net)
+  const junctionEdges = [];
+  for (const c of components || []) {
+    if (c?.kind !== "JUNCTION") continue;
+    const a = c?.pins?.[0]?.id;
+    const b = c?.pins?.[1]?.id;
+    if (!a || !b) continue;
+    junctionEdges.push([a, b]);
     addEdge(a, b);
   }
 
@@ -285,6 +296,9 @@ export function buildNodes({ analogComponents = [], wires = [] }) {
   for (const pid of reachable) dsu.make(pid);
 
   for (const [a, b] of allWirePairs) {
+    if (reachable.has(a) && reachable.has(b)) dsu.union(a, b);
+  }
+  for (const [a, b] of junctionEdges) {
     if (reachable.has(a) && reachable.has(b)) dsu.union(a, b);
   }
 
@@ -324,14 +338,14 @@ export function buildNodes({ analogComponents = [], wires = [] }) {
     if (node) pinToNode[pid] = node;
   }
 
-  // Debug nets: include only nets that touch analog pins (cleaner)
+  // Debug nets: include all reachable pins in that net (includes junction pins)
   const nets = [];
   for (const [root, pins] of rootToPins) {
     const node = rootToNode.get(root);
     if (!node) continue;
     nets.push({
       node,
-      pinIds: pins.filter((pid) => analogPinIds.has(pid)), // show analog pins in that net
+      pinIds: pins.slice(),
     });
   }
 
