@@ -93,49 +93,157 @@ export const simulate = (circuit, preSimulate = null) => {
 
     // Drive inputs via wires (output -> input)
     // Group wires by target pin to handle multiple drivers
-    const wiresByTarget = new Map();
-    for (const w of circuit.wires) {
-      if (!wiresByTarget.has(w.toPinId)) {
-        wiresByTarget.set(w.toPinId, []);
+    // const wiresByTarget = new Map();
+    // for (const w of circuit.wires) {
+    //   if (!wiresByTarget.has(w.toPinId)) {
+    //     wiresByTarget.set(w.toPinId, []);
+    //   }
+    //   wiresByTarget.get(w.toPinId).push(w);
+    // }
+
+    // // Apply wire values, handling conflicts
+    // for (const [toPinId, wires] of wiresByTarget) {
+    //   const to = getPin(circuit, toPinId);
+    //   if (!to) continue;
+
+    //   // Collect all driver values
+    //   const driverValues = wires
+    //     .map(w => getPin(circuit, w.fromPinId))
+    //     .filter(Boolean)
+    //     .map(from => from.pin.value);
+
+    //   if (driverValues.length === 0) continue;
+
+    //   // Resolve multiple drivers
+    //   let resolvedValue;
+    //   if (driverValues.length === 1) {
+    //     resolvedValue = driverValues[0];
+    //   } else {
+    //     // Check if all drivers agree
+    //     const firstValue = driverValues[0];
+    //     const allAgree = driverValues.every(v => v === firstValue || v === LV.X);
+
+    //     if (allAgree && firstValue !== LV.X) {
+    //       resolvedValue = firstValue; // All agree on HIGH or LOW
+    //     } else {
+    //       // Conflict: different values driving the same pin
+    //       resolvedValue = LV.X; // Show as undefined
+    //     }
+    //   }
+
+    //   if (to.pin.value !== resolvedValue) {
+    //     to.pin.value = resolvedValue;
+    //     changed = true;
+    //   }
+    // }
+
+    // ==========================================================
+    // OPTION 2: Net-based undirected wire solving (connected nets)
+    // ==========================================================
+
+    // Build Union-Find (Disjoint Set) over all pin IDs
+    const parent = new Map();
+
+    const allPins = [];
+    for (const cc of circuit.components) {
+      for (const pp of cc.pins) {
+        allPins.push({ comp: cc, pin: pp });
+        parent.set(pp.id, pp.id);
       }
-      wiresByTarget.get(w.toPinId).push(w);
     }
 
-    // Apply wire values, handling conflicts
-    for (const [toPinId, wires] of wiresByTarget) {
-      const to = getPin(circuit, toPinId);
-      if (!to) continue;
+    const find = (x) => {
+      let p = parent.get(x);
+      if (p === x) return x;
+      p = find(p);
+      parent.set(x, p);
+      return p;
+    };
 
-      // Collect all driver values
-      const driverValues = wires
-        .map(w => getPin(circuit, w.fromPinId))
-        .filter(Boolean)
-        .map(from => from.pin.value);
+    const union = (a, b) => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) parent.set(ra, rb);
+    };
 
-      if (driverValues.length === 0) continue;
+    // 1) Wires are undirected edges: connect both endpoints into the same net
+    for (const w of circuit.wires) {
+      union(w.fromPinId, w.toPinId);
+    }
 
-      // Resolve multiple drivers
-      let resolvedValue;
-      if (driverValues.length === 1) {
-        resolvedValue = driverValues[0];
-      } else {
-        // Check if all drivers agree
-        const firstValue = driverValues[0];
-        const allAgree = driverValues.every(v => v === firstValue || v === LV.X);
+    // 2) Junction should be a pure net node: its IN and OUT are the same net
+    // Your junctions currently have IN + OUT pins :contentReference[oaicite:3]{index=3}
+    for (const cc of circuit.components) {
+      if (cc.kind === KIND.JUNCTION) {
+        const a = cc.pins[0]?.id;
+        const b = cc.pins[1]?.id;
+        if (a && b) union(a, b);
+      }
+    }
 
-        if (allAgree && firstValue !== LV.X) {
-          resolvedValue = firstValue; // All agree on HIGH or LOW
-        } else {
-          // Conflict: different values driving the same pin
-          resolvedValue = LV.X; // Show as undefined
+    // Group pins by net root
+    const nets = new Map(); // rootId -> array of {comp,pin}
+    for (const { comp, pin } of allPins) {
+      const r = find(pin.id);
+      if (!nets.has(r)) nets.set(r, []);
+      nets.get(r).push({ comp, pin });
+    }
+
+    const resolveNetValue = (nodes) => {
+      // Drivers are pins with dir === "out" EXCEPT junction "OUT"
+      // (junction is not a real driver; it's just a connection node)
+      const driverVals = [];
+      for (const n of nodes) {
+        if (n.pin.dir === "out" && n.comp.kind !== KIND.JUNCTION) {
+          driverVals.push(n.pin.value);
         }
       }
 
-      if (to.pin.value !== resolvedValue) {
-        to.pin.value = resolvedValue;
-        changed = true;
+      // Remove X drivers if there are definite drivers
+      const definite = driverVals.filter(v => v === LV.HIGH || v === LV.LOW);
+
+      if (definite.length === 0) {
+        // No definite drivers → floating net
+        return LV.X;
+      }
+
+      const has1 = definite.includes(LV.HIGH);
+      const has0 = definite.includes(LV.LOW);
+      if (has1 && has0) return LV.X;  // conflict (short)
+      return has1 ? LV.HIGH : LV.LOW;
+    };
+
+    // Apply resolved net value to pins in that net
+    for (const nodes of nets.values()) {
+      const netVal = resolveNetValue(nodes);
+
+      for (const n of nodes) {
+        // Junction pins should display the net value too
+        if (n.comp.kind === KIND.JUNCTION) {
+          if (n.pin.value !== netVal) {
+            n.pin.value = netVal;
+            changed = true;
+          }
+          continue;
+        }
+
+        // Inputs should read the net
+        if (n.pin.dir === "in") {
+          if (n.pin.value !== netVal) {
+            n.pin.value = netVal;
+            changed = true;
+          }
+        }
+
+        // Optional: if an output is X but the net is driven by someone else,
+        // you can reflect net value on it (useful for visual consistency).
+        if (n.pin.dir === "out" && n.pin.value === LV.X && netVal !== LV.X) {
+          n.pin.value = netVal;
+          changed = true;
+        }
       }
     }
+
 
     // Evaluate gates outputs from their input pins
     for (const c of circuit.components) {
@@ -271,34 +379,34 @@ export const simulate = (circuit, preSimulate = null) => {
           // 2. Inject Inputs (External -> Internal)
           // Moved to callback to persist after reset
           const injectInputs = () => {
-              for (const inputDef of icDef.inputPins) {
-                const extPin = inPins.find(p => p.name === inputDef.name);
+            for (const inputDef of icDef.inputPins) {
+              const extPin = inPins.find(p => p.name === inputDef.name);
 
-                // ✅ NEW: support driving multiple internal pins from one external pin
-                const ids = inputDef.internalPinIds?.length
-                  ? inputDef.internalPinIds
-                  : [inputDef.internalPinId];
+              // ✅ NEW: support driving multiple internal pins from one external pin
+              const ids = inputDef.internalPinIds?.length
+                ? inputDef.internalPinIds
+                : [inputDef.internalPinId];
 
-                for (const internalId of ids) {
-                  const found = getPin(internalCircuit, internalId);
+              for (const internalId of ids) {
+                const found = getPin(internalCircuit, internalId);
 
-                  if (extPin && found) {
-                    // If the internal pin belongs to an INPUT/BUTTON/VCC/GND/CLOCK, update its state
-                    if (
-                      found.comp.kind === KIND.INPUT ||
-                      found.comp.kind === KIND.VCC ||
-                      found.comp.kind === KIND.GND ||
-                      found.comp.kind === KIND.CLOCK
-                    ) {
-                      found.comp.state.value = extPin.value;
-                    } else if (found.comp.kind === KIND.BUTTON) {
-                      found.comp.state.pressed = (extPin.value === LV.HIGH);
-                    } else {
-                      found.pin.value = extPin.value;
-                    }
+                if (extPin && found) {
+                  // If the internal pin belongs to an INPUT/BUTTON/VCC/GND/CLOCK, update its state
+                  if (
+                    found.comp.kind === KIND.INPUT ||
+                    found.comp.kind === KIND.VCC ||
+                    found.comp.kind === KIND.GND ||
+                    found.comp.kind === KIND.CLOCK
+                  ) {
+                    found.comp.state.value = extPin.value;
+                  } else if (found.comp.kind === KIND.BUTTON) {
+                    found.comp.state.pressed = (extPin.value === LV.HIGH);
+                  } else {
+                    found.pin.value = extPin.value;
                   }
                 }
               }
+            }
           };
 
           // 3. Simulate Internal Circuit
@@ -499,33 +607,33 @@ export const simulate = (circuit, preSimulate = null) => {
         const D = getVal("D");
 
         if (A === LV.X || B === LV.X || C === LV.X || D === LV.X) {
-             ["a", "b", "c", "d", "e", "f", "g"].forEach(seg => setOut(seg, LV.LOW)); // Off if undefined
+          ["a", "b", "c", "d", "e", "f", "g"].forEach(seg => setOut(seg, LV.LOW)); // Off if undefined
         } else {
-            const val = (D << 3) | (C << 2) | (B << 1) | A;
-            
-            // Segments: a, b, c, d, e, f, g
-            const map = [
-                // 0    1      2      3      4      5      6      7      8      9      A      b      C      d      E      F
-                0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71
-            ];
-            /*
-              Bit 0: a
-              Bit 1: b
-              Bit 2: c
-              Bit 3: d
-              Bit 4: e
-              Bit 5: f
-              Bit 6: g
-            */
-           
-           const pattern = map[val];
-           setOut("a", (pattern & 1) ? LV.HIGH : LV.LOW);
-           setOut("b", (pattern & 2) ? LV.HIGH : LV.LOW);
-           setOut("c", (pattern & 4) ? LV.HIGH : LV.LOW);
-           setOut("d", (pattern & 8) ? LV.HIGH : LV.LOW);
-           setOut("e", (pattern & 16) ? LV.HIGH : LV.LOW);
-           setOut("f", (pattern & 32) ? LV.HIGH : LV.LOW);
-           setOut("g", (pattern & 64) ? LV.HIGH : LV.LOW);
+          const val = (D << 3) | (C << 2) | (B << 1) | A;
+
+          // Segments: a, b, c, d, e, f, g
+          const map = [
+            // 0    1      2      3      4      5      6      7      8      9      A      b      C      d      E      F
+            0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71
+          ];
+          /*
+            Bit 0: a
+            Bit 1: b
+            Bit 2: c
+            Bit 3: d
+            Bit 4: e
+            Bit 5: f
+            Bit 6: g
+          */
+
+          const pattern = map[val];
+          setOut("a", (pattern & 1) ? LV.HIGH : LV.LOW);
+          setOut("b", (pattern & 2) ? LV.HIGH : LV.LOW);
+          setOut("c", (pattern & 4) ? LV.HIGH : LV.LOW);
+          setOut("d", (pattern & 8) ? LV.HIGH : LV.LOW);
+          setOut("e", (pattern & 16) ? LV.HIGH : LV.LOW);
+          setOut("f", (pattern & 32) ? LV.HIGH : LV.LOW);
+          setOut("g", (pattern & 64) ? LV.HIGH : LV.LOW);
         }
       }
     }

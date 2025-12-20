@@ -796,85 +796,111 @@ export default function Editor() {
     // };
 
 
+    // const connectPins = (aPinId, bPinId, points = []) => {
+    //     const next = structuredClone(circuit);
+
+    //     // Find which component + pin belongs to a given pinId
+    //     const findPinMeta = (pinId) => {
+    //         for (const c of next.components) {
+    //             const p = c.pins.find((pp) => pp.id === pinId);
+    //             if (p) return { comp: c, pin: p };
+    //         }
+    //         return null;
+    //     };
+
+    //     const A = findPinMeta(aPinId);
+    //     const B = findPinMeta(bPinId);
+    //     if (!A || !B) return;
+
+    //     const wireExists = (fromPinId, toPinId) =>
+    //         next.wires.some((w) => w.fromPinId === fromPinId && w.toPinId === toPinId);
+
+    //     // ✅ SPECIAL CASE: Junction <-> Junction should behave like a simple wire (bidirectional)
+    //     if (A.comp.kind === KIND.JUNCTION && B.comp.kind === KIND.JUNCTION) {
+    //         const aIn = A.comp.pins.find((p) => p.name === "IN");
+    //         const aOut = A.comp.pins.find((p) => p.name === "OUT");
+    //         const bIn = B.comp.pins.find((p) => p.name === "IN");
+    //         const bOut = B.comp.pins.find((p) => p.name === "OUT");
+    //         if (!aIn || !aOut || !bIn || !bOut) return;
+
+    //         // A -> B
+    //         if (!wireExists(aOut.id, bIn.id)) {
+    //             next.wires.push({
+    //                 id: uid(),
+    //                 fromPinId: aOut.id,
+    //                 toPinId: bIn.id,
+    //                 points,
+    //             });
+    //         }
+
+    //         // B -> A (reverse)
+    //         if (!wireExists(bOut.id, aIn.id)) {
+    //             next.wires.push({
+    //                 id: uid(),
+    //                 fromPinId: bOut.id,
+    //                 toPinId: aIn.id,
+    //                 points: [...points].reverse(),
+    //             });
+    //         }
+
+    //         updateCircuit(next);
+    //         return;
+    //     }
+
+    //     // ✅ Default rule: Only allow OUT -> IN for normal components
+    //     let fromPinId, toPinId;
+    //     let finalPoints = points;
+
+    //     if (A.pin.dir === "out" && B.pin.dir === "in") {
+    //         fromPinId = aPinId;
+    //         toPinId = bPinId;
+    //     } else if (A.pin.dir === "in" && B.pin.dir === "out") {
+    //         // If user clicked in reverse order, flip it
+    //         fromPinId = bPinId;
+    //         toPinId = aPinId;
+    //         finalPoints = [...points].reverse();
+    //     } else {
+    //         // IN->IN or OUT->OUT not allowed for normal components
+    //         return;
+    //     }
+
+    //     if (!wireExists(fromPinId, toPinId)) {
+    //         next.wires.push({
+    //             id: uid(),
+    //             fromPinId,
+    //             toPinId,
+    //             points: finalPoints,
+    //         });
+    //     }
+
+    //     updateCircuit(next);
+    // };
+
+
     const connectPins = (aPinId, bPinId, points = []) => {
+        // 1️⃣ Prevent self-connection
+        if (aPinId === bPinId) return;
+
         const next = structuredClone(circuit);
 
-        // Find which component + pin belongs to a given pinId
-        const findPinMeta = (pinId) => {
-            for (const c of next.components) {
-                const p = c.pins.find((pp) => pp.id === pinId);
-                if (p) return { comp: c, pin: p };
-            }
-            return null;
-        };
+        // 2️⃣ Avoid duplicate connections (A↔B or B↔A)
+        const exists = next.wires.some(w =>
+            (w.fromPinId === aPinId && w.toPinId === bPinId) ||
+            (w.fromPinId === bPinId && w.toPinId === aPinId)
+        );
+        if (exists) return;
 
-        const A = findPinMeta(aPinId);
-        const B = findPinMeta(bPinId);
-        if (!A || !B) return;
-
-        const wireExists = (fromPinId, toPinId) =>
-            next.wires.some((w) => w.fromPinId === fromPinId && w.toPinId === toPinId);
-
-        // ✅ SPECIAL CASE: Junction <-> Junction should behave like a simple wire (bidirectional)
-        if (A.comp.kind === KIND.JUNCTION && B.comp.kind === KIND.JUNCTION) {
-            const aIn = A.comp.pins.find((p) => p.name === "IN");
-            const aOut = A.comp.pins.find((p) => p.name === "OUT");
-            const bIn = B.comp.pins.find((p) => p.name === "IN");
-            const bOut = B.comp.pins.find((p) => p.name === "OUT");
-            if (!aIn || !aOut || !bIn || !bOut) return;
-
-            // A -> B
-            if (!wireExists(aOut.id, bIn.id)) {
-                next.wires.push({
-                    id: uid(),
-                    fromPinId: aOut.id,
-                    toPinId: bIn.id,
-                    points,
-                });
-            }
-
-            // B -> A (reverse)
-            if (!wireExists(bOut.id, aIn.id)) {
-                next.wires.push({
-                    id: uid(),
-                    fromPinId: bOut.id,
-                    toPinId: aIn.id,
-                    points: [...points].reverse(),
-                });
-            }
-
-            updateCircuit(next);
-            return;
-        }
-
-        // ✅ Default rule: Only allow OUT -> IN for normal components
-        let fromPinId, toPinId;
-        let finalPoints = points;
-
-        if (A.pin.dir === "out" && B.pin.dir === "in") {
-            fromPinId = aPinId;
-            toPinId = bPinId;
-        } else if (A.pin.dir === "in" && B.pin.dir === "out") {
-            // If user clicked in reverse order, flip it
-            fromPinId = bPinId;
-            toPinId = aPinId;
-            finalPoints = [...points].reverse();
-        } else {
-            // IN->IN or OUT->OUT not allowed for normal components
-            return;
-        }
-
-        if (!wireExists(fromPinId, toPinId)) {
-            next.wires.push({
-                id: uid(),
-                fromPinId,
-                toPinId,
-                points: finalPoints,
-            });
-        }
+        // 3️⃣ Create ONE wire (undirected in simulation)
+        next.wires.push({
+            id: uid(),
+            fromPinId: aPinId,
+            toPinId: bPinId,
+            points,
+        });
 
         updateCircuit(next);
     };
+
 
 
 

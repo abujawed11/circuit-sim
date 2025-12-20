@@ -148,7 +148,7 @@ export default function Canvas({
       if (selectedCompId && !allCompIds.includes(selectedCompId)) {
         allCompIds.push(selectedCompId);
       }
-      
+
       const allWireIds = [...selectedWireIds];
       if (selectedWireId && !allWireIds.includes(selectedWireId)) {
         allWireIds.push(selectedWireId);
@@ -252,14 +252,14 @@ export default function Canvas({
       const isSel = c.id === selectedCompId || selectedCompIds.includes(c.id);
 
       ctx.save();
-      
+
       // Apply Rotation
       if (c.rotate && c.kind !== KIND.JUNCTION) {
-         const cx = c.x + c.w / 2;
-         const cy = c.y + c.h / 2;
-         ctx.translate(cx, cy);
-         ctx.rotate((c.rotate * 90 * Math.PI) / 180);
-         ctx.translate(-cx, -cy);
+        const cx = c.x + c.w / 2;
+        const cy = c.y + c.h / 2;
+        ctx.translate(cx, cy);
+        ctx.rotate((c.rotate * 90 * Math.PI) / 180);
+        ctx.translate(-cx, -cy);
       }
 
       // Use basePinPosition for local drawing, since context is rotated
@@ -288,7 +288,7 @@ export default function Canvas({
             const jInPin = c.pins.find((p) => p.name === "IN");
             const jOutPin = c.pins.find((p) => p.name === "OUT");
 
-            let isValid = false;
+            let isValid = true;
             if (fromMeta) {
               // OUT can connect to junction IN, IN can connect to junction OUT
               if (fromMeta.pin.dir === "out" && jInPin) isValid = true;
@@ -364,70 +364,70 @@ export default function Canvas({
         ctx.fillText(isOn ? "ON" : "OFF", c.x + 30, c.y + 55);
         ctx.textAlign = "left";
 
-                // Draw pin
+        // Draw pin
 
-                for (const p of c.pins) {
+        for (const p of c.pins) {
 
-                  const pos = pinPosition(c, p);
+          const pos = pinPosition(c, p);
 
-        
 
-                  // Check if this pin is hovered
 
-                  const isHovered = hoveredPin?.pin?.id === p.id;
+          // Check if this pin is hovered
 
-                  if (isHovered) {
+          const isHovered = hoveredPin?.pin?.id === p.id;
 
-                     ctx.save();
+          if (isHovered) {
 
-                     ctx.globalAlpha = 0.5;
+            ctx.save();
 
-                     ctx.beginPath();
+            ctx.globalAlpha = 0.5;
 
-                     ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+            ctx.beginPath();
 
-                     
+            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
 
-                     if (draft) {
 
-                         const fromMeta = getPinMeta(draft.fromPinId);
 
-                         let isValid = false;
+            if (draft) {
 
-                         if (fromMeta) {
+              const fromMeta = getPinMeta(draft.fromPinId);
 
-                             if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
+              let isValid = true;
 
-                             if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
+              if (fromMeta) {
 
-                         }
+                if (fromMeta.pin.dir === "out" && p.dir === "in") isValid = true;
 
-                         ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
-
-                     } else {
-
-                         ctx.fillStyle = "#60a5fa";
-
-                     }
-
-                     ctx.fill();
-
-                     ctx.restore();
-
-                  }
-
-        
-
-                  pinDot(ctx, pos.x, pos.y, p.value);
-
-                }
-
-                
-
-                ctx.restore();
-        continue;
+                if (fromMeta.pin.dir === "in" && p.dir === "out") isValid = true;
 
               }
+
+              ctx.fillStyle = isValid ? "#10b981" : "#ef4444";
+
+            } else {
+
+              ctx.fillStyle = "#60a5fa";
+
+            }
+
+            ctx.fill();
+
+            ctx.restore();
+
+          }
+
+
+
+          pinDot(ctx, pos.x, pos.y, p.value);
+
+        }
+
+
+
+        ctx.restore();
+        continue;
+
+      }
 
       if (c.kind === KIND.BUTTON) {
         const isPressed = !!c.state.pressed;
@@ -681,87 +681,87 @@ export default function Canvas({
         continue;
       }
 
-// ✅ NEW: 555 Timer IC (clean style: dots only, bigger spacing)
-if (c.kind === KIND.TIMER_555) {
-  // chip body
-  ctx.fillStyle = "#0b0b0b";
-  ctx.strokeStyle = isSel ? "#FAD90E" : "#444";
-  ctx.lineWidth = isSel ? 3 : 2;
-  roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-  ctx.fill();
-  ctx.stroke();
+      // ✅ NEW: 555 Timer IC (clean style: dots only, bigger spacing)
+      if (c.kind === KIND.TIMER_555) {
+        // chip body
+        ctx.fillStyle = "#0b0b0b";
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#444";
+        ctx.lineWidth = isSel ? 3 : 2;
+        roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+        ctx.fill();
+        ctx.stroke();
 
-  // center text "555"
-  ctx.fillStyle = "#FAD90E";
-  ctx.font = "bold 44px system-ui";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  drawStraightText(ctx, "555", c.x + c.w / 2, c.y + c.h / 2, c);
+        // center text "555"
+        ctx.fillStyle = "#FAD90E";
+        ctx.font = "bold 44px system-ui";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        drawStraightText(ctx, "555", c.x + c.w / 2, c.y + c.h / 2, c);
 
-  // pins (dots + labels + pin numbers)
-  for (const p of c.pins) {
-    const pos = pinPosition(c, p);
+        // pins (dots + labels + pin numbers)
+        for (const p of c.pins) {
+          const pos = pinPosition(c, p);
 
-    const side = p.side || (p.dir === "in" ? "left" : "right");
-    const label = (p.label ?? p.name ?? "").toLowerCase();
+          const side = p.side || (p.dir === "in" ? "left" : "right");
+          const label = (p.label ?? p.name ?? "").toLowerCase();
 
-    // ✅ NEW: draw only dot (no lead lines)
-    pinDot(ctx, pos.x, pos.y, p.value);
+          // ✅ NEW: draw only dot (no lead lines)
+          pinDot(ctx, pos.x, pos.y, p.value);
 
-    // hover highlight
-    const isHovered = hoveredPin?.pin?.id === p.id;
-    if (isHovered) {
-      ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
-      ctx.fillStyle = "#60a5fa";
-      ctx.fill();
-      ctx.restore();
-    }
+          // hover highlight
+          const isHovered = hoveredPin?.pin?.id === p.id;
+          if (isHovered) {
+            ctx.save();
+            ctx.globalAlpha = 0.35;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
+            ctx.fillStyle = "#60a5fa";
+            ctx.fill();
+            ctx.restore();
+          }
 
-    // pin number
-    ctx.fillStyle = "#cbd5e1";
-    ctx.font = "bold 13px system-ui";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+          // pin number
+          ctx.fillStyle = "#cbd5e1";
+          ctx.font = "bold 13px system-ui";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
 
-    let nx = pos.x, ny = pos.y;
-    if (side === "left")   { nx = pos.x + 18; ny = pos.y - 10; }
-    if (side === "right")  { nx = pos.x - 18; ny = pos.y - 10; }
-    if (side === "top")    { nx = pos.x;      ny = pos.y + 18; }
-    if (side === "bottom") { nx = pos.x;      ny = pos.y - 18; }
+          let nx = pos.x, ny = pos.y;
+          if (side === "left") { nx = pos.x + 18; ny = pos.y - 10; }
+          if (side === "right") { nx = pos.x - 18; ny = pos.y - 10; }
+          if (side === "top") { nx = pos.x; ny = pos.y + 18; }
+          if (side === "bottom") { nx = pos.x; ny = pos.y - 18; }
 
-    ctx.fillText(String(p.num ?? ""), nx, ny);
+          ctx.fillText(String(p.num ?? ""), nx, ny);
 
-    // label text (place it slightly further from the dot)
-    ctx.fillStyle = "#9ca3af";
-    ctx.font = "13px system-ui";
+          // label text (place it slightly further from the dot)
+          ctx.fillStyle = "#9ca3af";
+          ctx.font = "13px system-ui";
 
-    if (side === "left") {
-      ctx.textAlign = "left";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText(label, pos.x + 26, pos.y + 5);
-    } else if (side === "right") {
-      ctx.textAlign = "right";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText(label, pos.x - 26, pos.y + 5);
-    } else if (side === "top") {
-      ctx.textAlign = "center";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText(label, pos.x, pos.y + 44);
-    } else if (side === "bottom") {
-      ctx.textAlign = "center";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText(label, pos.x, pos.y - 30);
-    }
-  }
+          if (side === "left") {
+            ctx.textAlign = "left";
+            ctx.textBaseline = "alphabetic";
+            ctx.fillText(label, pos.x + 26, pos.y + 5);
+          } else if (side === "right") {
+            ctx.textAlign = "right";
+            ctx.textBaseline = "alphabetic";
+            ctx.fillText(label, pos.x - 26, pos.y + 5);
+          } else if (side === "top") {
+            ctx.textAlign = "center";
+            ctx.textBaseline = "alphabetic";
+            ctx.fillText(label, pos.x, pos.y + 44);
+          } else if (side === "bottom") {
+            ctx.textAlign = "center";
+            ctx.textBaseline = "alphabetic";
+            ctx.fillText(label, pos.x, pos.y - 30);
+          }
+        }
 
-  // reset text settings
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
-  continue;
-}
+        // reset text settings
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+        continue;
+      }
 
 
 
@@ -892,7 +892,7 @@ if (c.kind === KIND.TIMER_555) {
         ctx.font = "10px system-ui";
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
-          
+
           ctx.fillStyle = "#aaa";
           const offset = p.dir === "in" ? 8 : -8;
           ctx.textAlign = p.dir === "in" ? "left" : "right";
@@ -900,13 +900,13 @@ if (c.kind === KIND.TIMER_555) {
 
           const isHovered = hoveredPin?.pin?.id === p.id;
           if (isHovered) {
-             ctx.save();
-             ctx.globalAlpha = 0.5;
-             ctx.beginPath();
-             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-             ctx.fillStyle = "#60a5fa";
-             ctx.fill();
-             ctx.restore();
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+            ctx.fillStyle = "#60a5fa";
+            ctx.fill();
+            ctx.restore();
           }
           pinDot(ctx, pos.x, pos.y, p.value);
         }
@@ -929,7 +929,7 @@ if (c.kind === KIND.TIMER_555) {
 
         // Draw segments
         // Center x,y relative to component
-        const cx = c.x + c.w * 0.6; 
+        const cx = c.x + c.w * 0.6;
         const cy = c.y + c.h / 2;
         const sw = 40; // width of digit
         const sh = 60; // height of digit
@@ -945,70 +945,70 @@ if (c.kind === KIND.TIMER_555) {
         // g: middle
 
         const drawH = (x, y, active) => {
-            ctx.beginPath();
-            ctx.moveTo(x + t, y);
-            ctx.lineTo(x + sw - t, y);
-            ctx.lineTo(x + sw - t - t, y + t);
-            ctx.lineTo(x + t + t, y + t);
-            ctx.closePath();
-            ctx.fillStyle = active === LV.HIGH ? "#ff0000" : "#330000";
-            ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(x + t, y);
+          ctx.lineTo(x + sw - t, y);
+          ctx.lineTo(x + sw - t - t, y + t);
+          ctx.lineTo(x + t + t, y + t);
+          ctx.closePath();
+          ctx.fillStyle = active === LV.HIGH ? "#ff0000" : "#330000";
+          ctx.fill();
         };
 
         const drawV = (x, y, active) => {
-             ctx.beginPath();
-             ctx.moveTo(x, y + t);
-             ctx.lineTo(x + t, y + t + t);
-             ctx.lineTo(x + t, y + sh/2 - t - t);
-             ctx.lineTo(x, y + sh/2 - t);
-             ctx.closePath();
-             ctx.fillStyle = active === LV.HIGH ? "#ff0000" : "#330000";
-             ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(x, y + t);
+          ctx.lineTo(x + t, y + t + t);
+          ctx.lineTo(x + t, y + sh / 2 - t - t);
+          ctx.lineTo(x, y + sh / 2 - t);
+          ctx.closePath();
+          ctx.fillStyle = active === LV.HIGH ? "#ff0000" : "#330000";
+          ctx.fill();
         }
 
         // Segment coordinates definitions
         // A simple approach: defined rects or paths
         const segs = {
-            a: { x: cx - sw/2, y: cy - sh/2, type: 'h' },
-            b: { x: cx + sw/2 - t, y: cy - sh/2, type: 'v' },
-            c: { x: cx + sw/2 - t, y: cy, type: 'v' },
-            d: { x: cx - sw/2, y: cy + sh/2 - t, type: 'h' },
-            e: { x: cx - sw/2, y: cy, type: 'v' },
-            f: { x: cx - sw/2, y: cy - sh/2, type: 'v' },
-            g: { x: cx - sw/2, y: cy - t/2, type: 'h' },
+          a: { x: cx - sw / 2, y: cy - sh / 2, type: 'h' },
+          b: { x: cx + sw / 2 - t, y: cy - sh / 2, type: 'v' },
+          c: { x: cx + sw / 2 - t, y: cy, type: 'v' },
+          d: { x: cx - sw / 2, y: cy + sh / 2 - t, type: 'h' },
+          e: { x: cx - sw / 2, y: cy, type: 'v' },
+          f: { x: cx - sw / 2, y: cy - sh / 2, type: 'v' },
+          g: { x: cx - sw / 2, y: cy - t / 2, type: 'h' },
         };
 
         // Custom draw functions for better looking segments
         const drawSeg = (key, active) => {
-             ctx.fillStyle = active === LV.HIGH ? "#ef4444" : "#280505";
-             
-             if (key === 'dp') {
-                 ctx.beginPath();
-                 ctx.arc(cx + sw/2 + 10, cy + sh/2 - 5, 3, 0, Math.PI*2);
-                 ctx.fill();
-                 return;
-             }
+          ctx.fillStyle = active === LV.HIGH ? "#ef4444" : "#280505";
 
-             const x = segs[key].x;
-             const y = segs[key].y;
-             
-             // Simple rectangles for robustness
-             if (key === 'a') ctx.fillRect(x, y, sw, t);
-             if (key === 'b') ctx.fillRect(x, y, t, sh/2);
-             if (key === 'c') ctx.fillRect(x, y, t, sh/2);
-             if (key === 'd') ctx.fillRect(x, y, sw, t);
-             if (key === 'e') ctx.fillRect(x, y, t, sh/2);
-             if (key === 'f') ctx.fillRect(x, y, t, sh/2);
-             if (key === 'g') ctx.fillRect(x, y, sw, t);
+          if (key === 'dp') {
+            ctx.beginPath();
+            ctx.arc(cx + sw / 2 + 10, cy + sh / 2 - 5, 3, 0, Math.PI * 2);
+            ctx.fill();
+            return;
+          }
+
+          const x = segs[key].x;
+          const y = segs[key].y;
+
+          // Simple rectangles for robustness
+          if (key === 'a') ctx.fillRect(x, y, sw, t);
+          if (key === 'b') ctx.fillRect(x, y, t, sh / 2);
+          if (key === 'c') ctx.fillRect(x, y, t, sh / 2);
+          if (key === 'd') ctx.fillRect(x, y, sw, t);
+          if (key === 'e') ctx.fillRect(x, y, t, sh / 2);
+          if (key === 'f') ctx.fillRect(x, y, t, sh / 2);
+          if (key === 'g') ctx.fillRect(x, y, sw, t);
         };
 
-        ['a','b','c','d','e','f','g', 'dp'].forEach(k => drawSeg(k, getVal(k)));
+        ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'dp'].forEach(k => drawSeg(k, getVal(k)));
 
 
         // Pins
         for (const p of c.pins) {
           const pos = pinPosition(c, p);
-          
+
           ctx.font = "9px system-ui";
           ctx.fillStyle = "#888";
           ctx.textAlign = "left";
@@ -1016,13 +1016,13 @@ if (c.kind === KIND.TIMER_555) {
 
           const isHovered = hoveredPin?.pin?.id === p.id;
           if (isHovered) {
-             ctx.save();
-             ctx.globalAlpha = 0.5;
-             ctx.beginPath();
-             ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
-             ctx.fillStyle = "#60a5fa";
-             ctx.fill();
-             ctx.restore();
+            ctx.save();
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+            ctx.fillStyle = "#60a5fa";
+            ctx.fill();
+            ctx.restore();
           }
           pinDot(ctx, pos.x, pos.y, p.value);
         }
@@ -1082,18 +1082,18 @@ if (c.kind === KIND.TIMER_555) {
         const isSupply = c.kind === KIND.GND || c.kind === KIND.VCC;
 
         if (!isSupply) {
-            ctx.fillStyle = "#121212";
-            ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
-            ctx.lineWidth = isSel ? 3 : 2;
+          ctx.fillStyle = "#121212";
+          ctx.strokeStyle = isSel ? "#FAD90E" : "#333";
+          ctx.lineWidth = isSel ? 3 : 2;
 
-            roundRect(ctx, c.x, c.y, c.w, c.h, 12);
-            ctx.fill();
-            ctx.stroke();
+          roundRect(ctx, c.x, c.y, c.w, c.h, 12);
+          ctx.fill();
+          ctx.stroke();
 
-            // title
-            ctx.fillStyle = "#e5e5e5";
-            ctx.font = "14px system-ui";
-            drawStraightText(ctx, c.kind, c.x + 12, c.y + 22, c);
+          // title
+          ctx.fillStyle = "#e5e5e5";
+          ctx.font = "14px system-ui";
+          drawStraightText(ctx, c.kind, c.x + 12, c.y + 22, c);
         }
 
         if (c.kind === KIND.VCC) {
@@ -1160,7 +1160,7 @@ if (c.kind === KIND.TIMER_555) {
           if (draft) {
             // During draft: show green for valid, red for invalid
             const fromMeta = getPinMeta(draft.fromPinId);
-            let isValid = false;
+            let isValid = true;
 
             if (fromMeta) {
               // Valid if directions are opposite (out->in or in->out)
@@ -1297,7 +1297,7 @@ if (c.kind === KIND.TIMER_555) {
         } else {
           setHoveredPin(null);
           setHoveredJunction(null);
-          
+
           const comp = hitComponent(circuit, p.x, p.y);
           setHoveredComponent(comp);
         }
@@ -1320,29 +1320,48 @@ if (c.kind === KIND.TIMER_555) {
   };
 
   // Wrapper for onConnectPins with validation
-  const tryConnectPins = (fromPinId, toPinId, points = []) => {
-    const fromMeta = getPinMeta(fromPinId);
-    const toMeta = getPinMeta(toPinId);
+  // const tryConnectPins = (fromPinId, toPinId, points = []) => {
+  //   const fromMeta = getPinMeta(fromPinId);
+  //   const toMeta = getPinMeta(toPinId);
 
-    if (!fromMeta || !toMeta) return;
+  //   if (!fromMeta || !toMeta) return;
 
-    const fromDir = fromMeta.pin.dir;
-    const toDir = toMeta.pin.dir;
+  //   const fromDir = fromMeta.pin.dir;
+  //   const toDir = toMeta.pin.dir;
 
-    // Check if connection is valid
-    if (fromDir === toDir) {
-      // Invalid: same direction
-      if (fromDir === "in") {
-        showToast("Invalid connection: IN → IN");
-      } else {
-        showToast("Invalid connection: OUT → OUT");
-      }
-      return;
-    }
+  //   // Check if connection is valid
+  //   if (fromDir === toDir) {
+  //     // Invalid: same direction
+  //     if (fromDir === "in") {
+  //       showToast("Invalid connection: IN → IN");
+  //     } else {
+  //       showToast("Invalid connection: OUT → OUT");
+  //     }
+  //     return;
+  //   }
 
-    // Valid connection - proceed
+  //   // Valid connection - proceed
+  //   onConnectPins(fromPinId, toPinId, points);
+  // };
+
+
+  // ✅ Option 2: allow connecting ANY pin to ANY pin (no IN/OUT restriction)
+  const tryConnectPins = (fromPinId, toPinId, points) => {
+    if (!fromPinId || !toPinId) return;
+    if (fromPinId === toPinId) return;
+
+    // Optional: prevent duplicate same wire (either direction)
+    const already = circuit.wires?.some(
+      (w) =>
+        (w.fromPinId === fromPinId && w.toPinId === toPinId) ||
+        (w.fromPinId === toPinId && w.toPinId === fromPinId)
+    );
+    if (already) return;
+
+    // No direction validation here anymore ✅
     onConnectPins(fromPinId, toPinId, points);
   };
+
 
 
   const onMouseDown = (e) => {
@@ -1593,8 +1612,12 @@ if (c.kind === KIND.TIMER_555) {
 
         // If draft started from OUT => finish into junction IN
         // If draft started from IN  => finish onto junction OUT (so connectPins can flip)
-        const targetPinId = start.pin.dir === "out" ? jIn : jOut;
+        // const targetPinId = start.pin.dir === "out" ? jIn : jOut;
 
+        // tryConnectPins(draft.fromPinId, targetPinId, draft.points);
+
+        // ✅ Option 2: junction is just a node, no IN/OUT meaning for connections
+        const targetPinId = jIn; // or jOut, pick one consistently
         tryConnectPins(draft.fromPinId, targetPinId, draft.points);
         setDraft(null);
       }
@@ -1639,18 +1662,18 @@ if (c.kind === KIND.TIMER_555) {
         const segIndex = Math.max(0, Math.min(points.length, Math.floor(t)));
 
         if (typeof onSplitWireAndConnect === "function") {
-             onSplitWireAndConnect(
-                 hitW.id, 
-                 snapped, 
-                 {
-                    beforePoints: points.slice(0, segIndex),
-                    afterPoints: points.slice(segIndex),
-                 },
-                 draft.fromPinId,
-                 draft.points
-             );
+          onSplitWireAndConnect(
+            hitW.id,
+            snapped,
+            {
+              beforePoints: points.slice(0, segIndex),
+              afterPoints: points.slice(segIndex),
+            },
+            draft.fromPinId,
+            draft.points
+          );
         }
-        
+
         setDraft(null);
         return;
       }
@@ -1689,17 +1712,17 @@ if (c.kind === KIND.TIMER_555) {
   const onContextMenu = (e) => {
     e.preventDefault();
     const { x, y } = toLocal(e);
-    
+
     // Finish drafting on right click
     if (draft) {
-        const sx = snap(x);
-        const sy = snap(y);
-        
-        if (typeof onAddJunctionAndConnect === "function") {
-            onAddJunctionAndConnect(sx, sy, draft.fromPinId, draft.points);
-        }
-        setDraft(null);
-        return;
+      const sx = snap(x);
+      const sy = snap(y);
+
+      if (typeof onAddJunctionAndConnect === "function") {
+        onAddJunctionAndConnect(sx, sy, draft.fromPinId, draft.points);
+      }
+      setDraft(null);
+      return;
     }
 
     // Clear hover states
@@ -1820,11 +1843,11 @@ if (c.kind === KIND.TIMER_555) {
       <canvas
         ref={ref}
         style={{
-            cursor: drag || pointDrag 
-                ? "grabbing" 
-                : (hoveredComponent || hoveredPin || hoveredJunction) 
-                    ? "pointer" 
-                    : "crosshair"
+          cursor: drag || pointDrag
+            ? "grabbing"
+            : (hoveredComponent || hoveredPin || hoveredJunction)
+              ? "pointer"
+              : "crosshair"
         }}
         className="w-full h-full"
         onMouseMove={onMouseMove}
@@ -2052,20 +2075,20 @@ function findPin(circuit, pinId) {
 function hitComponent(circuit, x, y) {
   for (let i = circuit.components.length - 1; i >= 0; i--) {
     const c = circuit.components[i];
-    
+
     let testX = x;
     let testY = y;
 
     if (c.rotate) {
-         const cx = c.x + c.w / 2;
-         const cy = c.y + c.h / 2;
-         const rad = -(c.rotate * 90 * Math.PI) / 180; // Negative for inverse rotation
-         
-         const dx = x - cx;
-         const dy = y - cy;
-         
-         testX = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
-         testY = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+      const cx = c.x + c.w / 2;
+      const cy = c.y + c.h / 2;
+      const rad = -(c.rotate * 90 * Math.PI) / 180; // Negative for inverse rotation
+
+      const dx = x - cx;
+      const dy = y - cy;
+
+      testX = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
+      testY = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
     }
 
     if (testX >= c.x && testX <= c.x + c.w && testY >= c.y && testY <= c.y + c.h) return c;
@@ -2207,34 +2230,34 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 function drawStraightText(ctx, text, x, y, c) {
-    if (!c.rotate) {
-        ctx.fillText(text, x, y);
-        return;
-    }
-    ctx.save();
-    ctx.translate(x, y);
-    // Counter-rotate to keep text horizontal
-    ctx.rotate(-(c.rotate * 90 * Math.PI) / 180);
-    ctx.fillText(text, 0, 0);
-    ctx.restore();
+  if (!c.rotate) {
+    ctx.fillText(text, x, y);
+    return;
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  // Counter-rotate to keep text horizontal
+  ctx.rotate(-(c.rotate * 90 * Math.PI) / 180);
+  ctx.fillText(text, 0, 0);
+  ctx.restore();
 }
 
 function pinPosition(c, p) {
-    const pos = basePinPosition(c, p);
-    if (!c.rotate) return pos;
+  const pos = basePinPosition(c, p);
+  if (!c.rotate) return pos;
 
-    // Rotate around center
-    const cx = c.x + c.w / 2;
-    const cy = c.y + c.h / 2;
-    const rad = (c.rotate * 90 * Math.PI) / 180;
-    
-    const dx = pos.x - cx;
-    const dy = pos.y - cy;
+  // Rotate around center
+  const cx = c.x + c.w / 2;
+  const cy = c.y + c.h / 2;
+  const rad = (c.rotate * 90 * Math.PI) / 180;
 
-    return {
-        x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
-        y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
-    };
+  const dx = pos.x - cx;
+  const dy = pos.y - cy;
+
+  return {
+    x: cx + dx * Math.cos(rad) - dy * Math.sin(rad),
+    y: cy + dx * Math.sin(rad) + dy * Math.cos(rad)
+  };
 }
 
 function basePinPosition(c, p) {
@@ -2348,7 +2371,7 @@ function basePinPosition(c, p) {
     const count = group.length;
 
     // Dynamically adjust pad based on pin count to prevent crowding
-    const pad = count > 5 ? 6 : 18; 
+    const pad = count > 5 ? 6 : 18;
     const t = (idx + 1) / (count + 1);
 
     if (p.side === "left") {
