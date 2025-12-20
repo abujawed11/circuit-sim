@@ -1348,6 +1348,9 @@ export default function Canvas({
   const onMouseDown = (e) => {
     closeMenu();
 
+    // Right-click should not change selection; onContextMenu handles the menu.
+    if (e.button === 2) return;
+
     // Clear hover states when starting drag
     setHoveredPin(null);
     setHoveredJunction(null);
