@@ -89,6 +89,7 @@ export default function Canvas({
   onPlace,
   onAddJunction,
   onAddJunctionAndConnect,
+  onSplitWireAndConnect,
   onToggleInput,
   onConnectPins,
   onMoveComponent,
@@ -1636,25 +1637,19 @@ if (c.kind === KIND.TIMER_555) {
         const points = Array.isArray(hitW.points) ? hitW.points : [];
         const segIndex = Math.max(0, Math.min(points.length, Math.floor(t)));
 
-        const junction = onSplitWire(hitW.id, snapped, {
-          beforePoints: points.slice(0, segIndex),
-          afterPoints: points.slice(segIndex),
-        });
-
-        if (junction) {
-            const fromMeta = getPinMeta(draft.fromPinId);
-            if (fromMeta) {
-                const jIn = junction.pins.find(p => p.name === "IN")?.id;
-                const jOut = junction.pins.find(p => p.name === "OUT")?.id;
-                
-                // If drafting from OUT, connect to IN. If from IN, connect to OUT.
-                const targetPinId = fromMeta.pin.dir === "out" ? jIn : jOut;
-                
-                if (targetPinId) {
-                    tryConnectPins(draft.fromPinId, targetPinId, draft.points);
-                }
-            }
+        if (typeof onSplitWireAndConnect === "function") {
+             onSplitWireAndConnect(
+                 hitW.id, 
+                 snapped, 
+                 {
+                    beforePoints: points.slice(0, segIndex),
+                    afterPoints: points.slice(segIndex),
+                 },
+                 draft.fromPinId,
+                 draft.points
+             );
         }
+        
         setDraft(null);
         return;
       }

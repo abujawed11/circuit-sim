@@ -806,6 +806,74 @@ export default function Editor() {
         return junction;
     };
 
+    const onSplitWireAndConnect = (wireId, point, split = null, fromPinId, points) => {
+        const next = structuredClone(circuit);
+        const wire = next.wires.find((w) => w.id === wireId);
+        if (!wire) return null;
+
+        // 1. Create junction and split existing wire
+        const junction = makeComponent(KIND.JUNCTION, point.x - 10, point.y - 10);
+        next.components.push(junction);
+
+        const originalPoints = Array.isArray(wire.points) ? wire.points : [];
+        const beforePoints = Array.isArray(split?.beforePoints) ? split.beforePoints : originalPoints;
+        const afterPoints = Array.isArray(split?.afterPoints) ? split.afterPoints : [];
+
+        const oldToPinId = wire.toPinId;
+        wire.toPinId = junction.pins[0].id; // Connect original wire to Junction IN
+        wire.points = beforePoints;
+
+        next.wires.push({
+            id: uid(),
+            fromPinId: junction.pins[1].id, // Connect Junction OUT to original destination
+            toPinId: oldToPinId,
+            points: afterPoints,
+        });
+
+        // 2. Connect drafted wire to the new junction
+        const findPinMeta = (pinId) => {
+             for (const c of next.components) {
+                const p = c.pins.find((pp) => pp.id === pinId);
+                if (p) return { comp: c, pin: p };
+            }
+            return null;
+        }
+
+        const sourceMeta = findPinMeta(fromPinId);
+        if (sourceMeta) {
+            const jIn = junction.pins.find(p => p.name === "IN");
+            const jOut = junction.pins.find(p => p.name === "OUT");
+            
+            let targetPinId;
+            // If drafting from OUT pin, connect to Junction IN
+            // If drafting from IN pin, connect to Junction OUT
+            if (sourceMeta.pin.dir === "out") targetPinId = jIn.id;
+            else targetPinId = jOut.id;
+
+            let wireFrom, wireTo;
+            let finalPoints = points;
+
+            if (sourceMeta.pin.dir === "out") {
+                wireFrom = fromPinId;
+                wireTo = targetPinId;
+            } else {
+                wireFrom = targetPinId;
+                wireTo = fromPinId;
+                finalPoints = [...points].reverse();
+            }
+
+            next.wires.push({
+                id: uid(),
+                fromPinId: wireFrom,
+                toPinId: wireTo,
+                points: finalPoints,
+            });
+        }
+
+        updateCircuit(next);
+        return junction;
+    };
+
     const onDragOver = (e) => {
         e.preventDefault();
     };
@@ -1100,6 +1168,7 @@ export default function Editor() {
                     onPlace={addAt}
                     onAddJunction={onAddJunction}
                     onAddJunctionAndConnect={onAddJunctionAndConnect}
+                    onSplitWireAndConnect={onSplitWireAndConnect}
                     onToggleInput={toggleInput}
                     onConnectPins={connectPins}
                     onMoveComponent={moveComponent}
