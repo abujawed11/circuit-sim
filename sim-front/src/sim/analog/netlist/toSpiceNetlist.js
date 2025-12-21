@@ -90,6 +90,14 @@ export function toSpiceNetlist({
   const uniqueRef = makeUniqueRefFn(refsInCircuit);
 
   const emittedElements = [];
+  const usedNodes = new Set();
+
+  const markUsedNodes = (...nodes) => {
+    for (const n of nodes) {
+      if (n === undefined || n === null) continue;
+      usedNodes.add(String(n));
+    }
+  };
 
   // Optional: emit sources first (cleaner). SPICE doesn't require this, but it helps readability.
   const ordered = [
@@ -112,6 +120,7 @@ export function toSpiceNetlist({
       const n2 = p2 ? nodeOf(pinToNode, p2) : `nc_${ref}_2`;
       lines.push(`${ref} ${n1} ${n2} ${value}`);
       emittedElements.push(ref);
+      markUsedNodes(n1, n2);
       continue;
     }
 
@@ -122,15 +131,16 @@ export function toSpiceNetlist({
       const nMinus = pMinus ? nodeOf(pinToNode, pMinus) : SPICE_GROUND_NODE;
       lines.push(`${ref} ${nPlus} ${nMinus} DC ${value}`);
       emittedElements.push(ref);
+      markUsedNodes(nPlus, nMinus);
       continue;
     }
   }
 
   // --- Signals to Record ---
-  // 1. Voltages: all unique nodes except 0
-  const uniqueNodes = new Set(Object.values(pinToNode));
-  uniqueNodes.delete(SPICE_GROUND_NODE); 
-  const voltageSignals = Array.from(uniqueNodes).map(n => `v(${n})`);
+  // 1. Voltages: only nodes that actually appear in emitted element lines (excluding 0)
+  const voltageSignals = Array.from(usedNodes)
+    .filter((n) => n && n !== SPICE_GROUND_NODE)
+    .map((n) => `v(${n})`);
 
   // 2. Currents: all emitted elements (R, C, L, V) using ngspice device parameter syntax @ref[i]
   // Ngspice requires lowercase device names for this syntax

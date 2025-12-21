@@ -321,21 +321,57 @@ export default function Canvas({
   };
 
   // Helper: Propagate current through wires at same node (for interconnecting wires)
-  const propagateCurrentThroughNode = (wire, fromMeta, toMeta) => {
+  // Uses BFS to find current through multiple junction hops
+  const propagateCurrentThroughNode = (wire, fromMeta, toMeta, wireFlowCache) => {
     if (!simulationData?.currents) return null;
 
-    // Find all wires connected to the same nodes as this wire
     const allWires = circuit.wires || [];
 
-    // Check both ends of the wire
+    // BFS to find current source through connected wires
+    const visited = new Set([wire.id]);
+    const queue = [];
+
+    // Start BFS from both ends of the current wire
     for (const endPinId of [wire.fromPinId, wire.toPinId]) {
-      // Find other wires connected to this pin/node
+      queue.push({ pinId: endPinId, sourcePinId: endPinId, hops: 0 });
+    }
+
+    while (queue.length > 0) {
+      const { pinId, sourcePinId, hops } = queue.shift();
+
+      // Limit search depth to avoid infinite loops
+      if (hops > 10) continue;
+
+      // Find wires connected to this pin
       const connectedWires = allWires.filter(w =>
-        w.id !== wire.id && (w.fromPinId === endPinId || w.toPinId === endPinId)
+        !visited.has(w.id) && (w.fromPinId === pinId || w.toPinId === pinId)
       );
 
-      // For each connected wire, check if it has a component with current
       for (const otherWire of connectedWires) {
+        visited.add(otherWire.id);
+
+        // Check if this wire has cached flow already
+        if (wireFlowCache.has(otherWire.id)) {
+          const cachedFlow = wireFlowCache.get(otherWire.id);
+          if (cachedFlow && cachedFlow.active) {
+            // Found current! Propagate it back to our wire
+            const speed = 0.2;
+
+            // Determine direction based on which end of our wire connects to the source
+            let direction = 1;
+            if (wire.fromPinId === sourcePinId) {
+              // Source is at start of wire, flow goes forward
+              direction = 1;
+            } else {
+              // Source is at end of wire, flow goes backward
+              direction = -1;
+            }
+
+            return { active: true, speed, direction };
+          }
+        }
+
+        // Check if this wire has a component with current
         const otherFromMeta = getPinMeta(otherWire.fromPinId);
         const otherToMeta = getPinMeta(otherWire.toPinId);
 
@@ -350,13 +386,11 @@ export default function Canvas({
           connectedPin = otherToMeta.pin;
         }
 
-        // If we found current, propagate it to this wire
         if (connectedPin && Math.abs(current) > 1e-9) {
-          // Use same current magnitude but adjust direction for this wire
+          // Found component with current!
           const speed = 0.2;
 
-          // Determine flow direction: if current flows INTO the shared node from other wire,
-          // it flows OUT of the shared node on this wire
+          // Calculate direction based on current flow
           const isPin1 = connectedPin.name === "1" || connectedPin.name === "+";
           let flowIntoSharedNode = false;
 
@@ -366,34 +400,42 @@ export default function Canvas({
             flowIntoSharedNode = (current > 0); // OUT of pin 2
           }
 
-          // Now for this wire: if flow is into shared node from other wire,
-          // it flows out through this wire
+          // Determine direction for our wire
           let direction = 1;
-          if (wire.fromPinId === endPinId) {
-            // Shared node is at start of this wire
-            direction = flowIntoSharedNode ? 1 : -1; // Flow OUT = forward
+          if (wire.fromPinId === sourcePinId) {
+            direction = flowIntoSharedNode ? 1 : -1;
           } else {
-            // Shared node is at end of this wire
-            direction = flowIntoSharedNode ? -1 : 1; // Flow IN = forward
+            direction = flowIntoSharedNode ? -1 : 1;
           }
 
           return { active: true, speed, direction };
         }
+
+        // Continue BFS: add the other end of this wire to queue
+        const nextPinId = otherWire.fromPinId === pinId ? otherWire.toPinId : otherWire.fromPinId;
+        queue.push({ pinId: nextPinId, sourcePinId, hops: hops + 1 });
       }
     }
 
     return null;
   };
 
-  const getWireFlow = (wire) => {
+  const getWireFlow = (wire, wireFlowCache) => {
+    // Check cache first
+    if (wireFlowCache.has(wire.id)) {
+      return wireFlowCache.get(wire.id);
+    }
+
+    let result = null;
+
     // 1. If we have simulation data, prioritize that
     if (simulationData?.currents) {
         const fromMeta = getPinMeta(wire.fromPinId);
         const toMeta = getPinMeta(wire.toPinId);
-        
+
         let current = 0;
         let connectedPin = null; // The pin on the component we found current for
-        
+
         // Try to find a component with current at either end
         if (fromMeta && simulationData.currents[fromMeta.comp.id] !== undefined) {
             current = simulationData.currents[fromMeta.comp.id];
@@ -404,33 +446,34 @@ export default function Canvas({
         }
 
         if (connectedPin && Math.abs(current) > 1e-9) { // Threshold 1nA
-            return calculateFlowParams(current, connectedPin, wire);
-        }
-
-        // NEW: For wires without direct component connection,
-        // propagate current from connected wires at the same node
-        // This shows current on interconnecting wires (like ground return paths)
-        const propagatedFlow = propagateCurrentThroughNode(wire, fromMeta, toMeta);
-        if (propagatedFlow) {
-            return propagatedFlow;
+            result = calculateFlowParams(current, connectedPin, wire);
+        } else {
+            // NEW: For wires without direct component connection,
+            // propagate current from connected wires at the same node
+            // This shows current on interconnecting wires (like ground return paths)
+            result = propagateCurrentThroughNode(wire, fromMeta, toMeta, wireFlowCache);
         }
     }
 
     // 2. Fallback to Digital Logic High (Legacy/Digital mode)
-    const fromMeta = getPinMeta(wire.fromPinId);
-    const toMeta = getPinMeta(wire.toPinId);
-    if (!fromMeta || !toMeta) return null;
-
-    const val = fromMeta.pin.value;
-    if (val === LV.HIGH) {
-        let direction = 1;
-        if (fromMeta.pin.dir === "in" && toMeta.pin.dir === "out") {
-            direction = -1;
+    if (!result) {
+        const fromMeta = getPinMeta(wire.fromPinId);
+        const toMeta = getPinMeta(wire.toPinId);
+        if (fromMeta && toMeta) {
+            const val = fromMeta.pin.value;
+            if (val === LV.HIGH) {
+                let direction = 1;
+                if (fromMeta.pin.dir === "in" && toMeta.pin.dir === "out") {
+                    direction = -1;
+                }
+                result = { active: true, speed: 2, direction };
+            }
         }
-        return { active: true, speed: 2, direction };
     }
-    
-    return null;
+
+    // Cache the result
+    wireFlowCache.set(wire.id, result);
+    return result;
   };
 
   const draw = () => {
@@ -467,6 +510,27 @@ export default function Canvas({
     ctx.globalAlpha = 1;
 
     // ---- wires (polyline) ----
+    // Create cache for wire flow to enable multi-hop propagation
+    const wireFlowCache = new Map();
+
+    // Pre-compute flow for all wires in multiple passes
+    // This ensures wires between junctions get current from cached neighbors
+    let previousSuccessCount = 0;
+    let maxPasses = 5; // Prevent infinite loops
+
+    for (let pass = 0; pass < maxPasses; pass++) {
+      let successCount = 0;
+      for (const w of circuit.wires) {
+        const flow = getWireFlow(w, wireFlowCache);
+        if (flow && flow.active) {
+          successCount++;
+        }
+      }
+      // Stop if no new wires got flow data
+      if (successCount === previousSuccessCount) break;
+      previousSuccessCount = successCount;
+    }
+
     for (const w of circuit.wires) {
 
       const from = findPinPos(circuit, w.fromPinId);
@@ -486,8 +550,8 @@ export default function Canvas({
       const pts = buildWirePolyline(from, to, w.points);
       drawPolyline(ctx, pts);
 
-      // Current Flow Animation
-      const flow = getWireFlow(w);
+      // Current Flow Animation - get from cache
+      const flow = wireFlowCache.get(w.id);
       if (flow && flow.active) {
           ctx.strokeStyle = "#00FF00"; // Yellow/Bright for current
           ctx.lineWidth = 4;
