@@ -184,7 +184,50 @@ export async function simulateAnalog({ analogComponents = [], wires = [], compon
     const errors = [];
 
     // 1) Build node mapping (pinId -> node)
-    const nodes = buildNodes({ analogComponents, wires, components });
+    // IMPORTANT: `analogComponents` may accidentally contain non-analog components (e.g. when caller passes circuit.components).
+    // Only analog-domain components should participate in node building / SPICE netlisting.
+    const analogOnly = (analogComponents || []).filter((c) => c?.domain === "analog");
+    const nodes = buildNodes({ analogComponents: analogOnly, wires, components });
+
+    // 1b) Netlist hygiene: ignore ammeters that aren't actually inserted in-series.
+    // WHY: an unconnected ammeter is emitted as a 0V source between two floating nodes, which can make ngspice's matrix singular.
+    const nodeToOwners = new Map(); // nodeName -> Set<componentId>
+    for (const c of analogOnly) {
+        for (const p of c?.pins || []) {
+            const nodeName = nodes.pinToNode?.[p.id];
+            if (!nodeName) continue;
+            if (!nodeToOwners.has(nodeName)) nodeToOwners.set(nodeName, new Set());
+            nodeToOwners.get(nodeName).add(c.id);
+        }
+    }
+
+    const effectiveAnalogComponents = [];
+    for (const c of analogOnly) {
+        if (c.kind === ANALOG_KIND.AMMETER) {
+            const displayName = getComponentDisplayName(c);
+            const pins = c.pins || [];
+            const ok =
+                pins.length >= 2 &&
+                pins.every((p) => {
+                    const nodeName = nodes.pinToNode?.[p.id];
+                    if (!nodeName) return false;
+                    const owners = nodeToOwners.get(nodeName);
+                    if (!owners) return false;
+                    for (const ownerId of owners) {
+                        if (ownerId !== c.id) return true;
+                    }
+                    return false;
+                });
+
+            if (!ok) {
+                warnings.push(
+                    `${displayName} ignored (ammeter must be connected in series: both pins must connect to the circuit).`
+                );
+                continue;
+            }
+        }
+        effectiveAnalogComponents.push(c);
+    }
 
     // 2) Detect floating nodes using graph-based reachability from ground
     //    WHY: Simply counting pins per net is WRONG because:
@@ -195,14 +238,14 @@ export async function simulateAnalog({ analogComponents = [], wires = [], compon
     //    APPROACH: Build node adjacency graph from component connections,
     //    then BFS from ground to mark all reachable nodes. Any non-reachable
     //    non-ground node is floating.
-    const floatingNodes = detectFloatingNodes(analogComponents, nodes.pinToNode);
+    const floatingNodes = detectFloatingNodes(effectiveAnalogComponents, nodes.pinToNode);
     for (const nodeName of floatingNodes) {
         warnings.push(`Node ${nodeName} is floating (no DC path to ground).`);
     }
 
     // 3) Basic validation (lightweight + non-breaking)
     //    Why: you want helpful messages early, without enforcing too much.
-    for (const c of analogComponents || []) {
+    for (const c of effectiveAnalogComponents || []) {
         if (!c) continue;
 
         // IMPORTANT: Only validate analog domain components
@@ -240,7 +283,7 @@ export async function simulateAnalog({ analogComponents = [], wires = [], compon
     let netlist = "";
     try {
         netlist = toSpiceNetlist({
-            analogComponents,
+            analogComponents: effectiveAnalogComponents,
             pinToNode: nodes.pinToNode,
             options: {
                 title: options.title || "Analog Circuit",
