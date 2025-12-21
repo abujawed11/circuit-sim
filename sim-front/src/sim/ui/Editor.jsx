@@ -112,18 +112,34 @@ export default function Editor() {
             
             setAnalogResult(res);
 
-            if (res.ok && res.results && res.results.dc && res.results.dc.elementCurrents) {
+            if (res.ok && res.results && res.results.dc) {
                 // Map currents to component IDs for visualization
                 const currentMap = {};
-                for (const item of res.results.dc.elementCurrents) {
-                    // item = { element: "R1", current: 0.005 }
-                    // Find component with this ref
-                    const comp = circuit.components.find(c => c.ref === item.element);
-                    if (comp) {
-                        currentMap[comp.id] = item.current;
+                if (res.results.dc.elementCurrents) {
+                    for (const item of res.results.dc.elementCurrents) {
+                        // item = { element: "R1", current: 0.005 }
+                        // Find component with this ref
+                        const comp = circuit.components.find(c => c.ref === item.element);
+                        if (comp) {
+                            currentMap[comp.id] = item.current;
+                        }
                     }
                 }
-                setSimulationData({ currents: currentMap });
+
+                // Build node voltage map for direction calculation
+                const nodeVoltageMap = {};
+                if (res.results.dc.nodeVoltages) {
+                    for (const item of res.results.dc.nodeVoltages) {
+                        nodeVoltageMap[item.node] = item.voltage;
+                    }
+                }
+
+                // Pass node data and voltages for node-based current visualization
+                setSimulationData({
+                    currents: currentMap,
+                    nodes: res.nodes || {},
+                    nodeVoltages: nodeVoltageMap
+                });
             }
         } catch (e) {
             console.error("Simulation failed:", e);
