@@ -338,6 +338,15 @@ export function buildNodes({ analogComponents = [], wires = [], components = [] 
     if (node) pinToNode[pid] = node;
   }
 
+  // 7b) Mapping for ALL pins in analog-touching nets (includes junction pins).
+  // WHY: UI visuals may need node names for wires that end on junction pins.
+  const pinToNodeAll = {};
+  for (const [root, pins] of rootToPins) {
+    const node = rootToNode.get(root);
+    if (!node) continue;
+    for (const pid of pins) pinToNodeAll[pid] = node;
+  }
+
   // Debug nets: include all reachable pins in that net (includes junction pins)
   const nets = [];
   for (const [root, pins] of rootToPins) {
@@ -349,5 +358,5 @@ export function buildNodes({ analogComponents = [], wires = [], components = [] 
     });
   }
 
-  return { pinToNode, nets };
+  return { pinToNode, pinToNodeAll, nets };
 }

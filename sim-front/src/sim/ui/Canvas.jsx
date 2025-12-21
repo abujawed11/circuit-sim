@@ -297,7 +297,7 @@ export default function Canvas({
 
   // NODE-BASED current flow calculation
   // Much simpler: uses node mapping to find current on any wire
-  const getWireFlow = (wire) => {
+  const getWireFlowLegacy = (wire) => {
     // 1. Try analog simulation data (node-based approach)
     if (simulationData?.currents && simulationData?.nodes?.pinToNode) {
       const { pinToNode } = simulationData.nodes;
@@ -379,6 +379,152 @@ export default function Canvas({
     }
 
     return null;
+  };
+
+  // Improved analog current flow visualization.
+  const analogFlowCtx = React.useMemo(() => {
+    if (!simulationData?.currents || !simulationData?.nodes) return null;
+
+    const pinToNode =
+      simulationData.nodes.pinToNodeAll || simulationData.nodes.pinToNode || {};
+    const nodeVoltages = simulationData.nodeVoltages || {};
+    const currentsByCompId = simulationData.currents || {};
+
+    const adj = new Map();
+    const addEdge = (a, b) => {
+      if (!a || !b) return;
+      if (!adj.has(a)) adj.set(a, new Set());
+      if (!adj.has(b)) adj.set(b, new Set());
+      adj.get(a).add(b);
+      adj.get(b).add(a);
+    };
+
+    for (const w of circuit.wires || []) addEdge(w.fromPinId, w.toPinId);
+    for (const c of circuit.components || []) {
+      if (c?.kind !== KIND.JUNCTION) continue;
+      const a = c?.pins?.[0]?.id;
+      const b = c?.pins?.[1]?.id;
+      addEdge(a, b);
+    }
+
+    const orderedPinsForCurrent = (comp) => {
+      if (!comp?.pins || comp.pins.length < 2) return null;
+      if (comp.domain !== ANALOG_DOMAIN) return null;
+      if (comp.kind === ANALOG_KIND.GND || comp.kind === ANALOG_KIND.VOLTMETER) return null;
+
+      if (comp.kind === ANALOG_KIND.VDC) {
+        const pPlus = comp.pins.find((p) => p.name === "+");
+        const pMinus = comp.pins.find((p) => p.name === "-");
+        if (pPlus?.id && pMinus?.id) return [pPlus.id, pMinus.id];
+      }
+
+      const p1 = comp.pins.find((p) => p.name === "1") || comp.pins[0];
+      const p2 = comp.pins.find((p) => p.name === "2") || comp.pins[1];
+      if (p1?.id && p2?.id) return [p1.id, p2.id];
+      return null;
+    };
+
+    // Map node -> representative current magnitude (for visibility).
+    const nodeMaxAbsCurrent = {};
+
+    // "Source" pins seed BFS so current animates through junction-only segments.
+    const sourcePins = new Set();
+
+    const I_EPS = 1e-9;
+    for (const c of circuit.components || []) {
+      if (c?.domain !== ANALOG_DOMAIN) continue;
+
+      const i = currentsByCompId[c.id];
+      if (typeof i !== "number" || Math.abs(i) <= I_EPS) continue;
+
+      const pins = orderedPinsForCurrent(c);
+      if (!pins || pins.length < 2) continue;
+
+      const a = pins[0];
+      const b = pins[1];
+      const na = pinToNode[a];
+      const nb = pinToNode[b];
+      if (!na || !nb) continue;
+
+      const absI = Math.abs(i);
+      nodeMaxAbsCurrent[na] = Math.max(nodeMaxAbsCurrent[na] || 0, absI);
+      nodeMaxAbsCurrent[nb] = Math.max(nodeMaxAbsCurrent[nb] || 0, absI);
+      if (na === nb) continue;
+
+      // Ngspice @ref[i] follows element pin order:
+      // Positive current flows from pin[0] node -> pin[1] node.
+      // That means the current emerges into the net at pin[1] when i>0, and at pin[0] when i<0.
+      const outPinId = i > 0 ? b : a;
+      sourcePins.add(outPinId);
+    }
+
+    // Multi-source BFS distances from source pins.
+    const dist = new Map();
+    const q = [];
+    for (const p of sourcePins) {
+      dist.set(p, 0);
+      q.push(p);
+    }
+    while (q.length) {
+      const cur = q.shift();
+      const d0 = dist.get(cur);
+      const ns = adj.get(cur);
+      if (!ns) continue;
+      for (const nxt of ns) {
+        if (!dist.has(nxt)) {
+          dist.set(nxt, d0 + 1);
+          q.push(nxt);
+        }
+      }
+    }
+
+    const getNodeV = (node) => {
+      if (!node) return null;
+      if (node === "0") return 0;
+      const v = nodeVoltages[node];
+      return typeof v === "number" ? v : null;
+    };
+
+    return { pinToNode, nodeMaxAbsCurrent, dist, getNodeV };
+  }, [simulationData, circuit.wires, circuit.components]);
+
+  const speedFromCurrent = (absI) => {
+    if (typeof absI !== "number" || absI <= 0) return 0.4;
+    const log = Math.log10(absI + 1e-12);
+    return Math.max(0.25, Math.min(2.5, 0.9 + log * 0.25));
+  };
+
+  const getWireFlow = (wire) => {
+    if (analogFlowCtx) {
+      const fromNode = analogFlowCtx.pinToNode[wire.fromPinId];
+      const toNode = analogFlowCtx.pinToNode[wire.toPinId];
+
+      const absI = Math.max(
+        analogFlowCtx.nodeMaxAbsCurrent[fromNode] || 0,
+        analogFlowCtx.nodeMaxAbsCurrent[toNode] || 0
+      );
+
+      if (absI > 1e-9) {
+        let direction = 1;
+
+        const dFrom = analogFlowCtx.dist.get(wire.fromPinId);
+        const dTo = analogFlowCtx.dist.get(wire.toPinId);
+        if (typeof dFrom === "number" && typeof dTo === "number" && dFrom !== dTo) {
+          direction = dFrom < dTo ? 1 : -1;
+        } else if (fromNode && toNode && fromNode !== toNode) {
+          const vFrom = analogFlowCtx.getNodeV(fromNode);
+          const vTo = analogFlowCtx.getNodeV(toNode);
+          if (typeof vFrom === "number" && typeof vTo === "number" && Math.abs(vFrom - vTo) > 1e-9) {
+            direction = vFrom > vTo ? 1 : -1;
+          }
+        }
+
+        return { active: true, speed: speedFromCurrent(absI), direction };
+      }
+    }
+
+    // Fall back to the existing digital (and legacy) behavior.
+    return getWireFlowLegacy(wire);
   };
 
   const draw = () => {
