@@ -295,6 +295,96 @@ export default function Canvas({
     return () => cancelAnimationFrame(animId);
   }, []);
 
+  // Helper: Calculate flow parameters from current and pin
+  const calculateFlowParams = (current, connectedPin, wire) => {
+    const absI = Math.abs(current);
+    const speed = 0.2; // Animation speed
+
+    // Calculate Direction based on pin and current sign
+    const isPin1 = connectedPin.name === "1" || connectedPin.name === "+";
+    let flowIntoPin = false;
+
+    if (isPin1) {
+      flowIntoPin = (current > 0);
+    } else {
+      flowIntoPin = (current < 0);
+    }
+
+    let direction = 1;
+    if (wire.fromPinId === connectedPin.id) {
+      direction = flowIntoPin ? -1 : 1;
+    } else {
+      direction = flowIntoPin ? 1 : -1;
+    }
+
+    return { active: true, speed, direction };
+  };
+
+  // Helper: Propagate current through wires at same node (for interconnecting wires)
+  const propagateCurrentThroughNode = (wire, fromMeta, toMeta) => {
+    if (!simulationData?.currents) return null;
+
+    // Find all wires connected to the same nodes as this wire
+    const allWires = circuit.wires || [];
+
+    // Check both ends of the wire
+    for (const endPinId of [wire.fromPinId, wire.toPinId]) {
+      // Find other wires connected to this pin/node
+      const connectedWires = allWires.filter(w =>
+        w.id !== wire.id && (w.fromPinId === endPinId || w.toPinId === endPinId)
+      );
+
+      // For each connected wire, check if it has a component with current
+      for (const otherWire of connectedWires) {
+        const otherFromMeta = getPinMeta(otherWire.fromPinId);
+        const otherToMeta = getPinMeta(otherWire.toPinId);
+
+        let current = 0;
+        let connectedPin = null;
+
+        if (otherFromMeta && simulationData.currents[otherFromMeta.comp.id] !== undefined) {
+          current = simulationData.currents[otherFromMeta.comp.id];
+          connectedPin = otherFromMeta.pin;
+        } else if (otherToMeta && simulationData.currents[otherToMeta.comp.id] !== undefined) {
+          current = simulationData.currents[otherToMeta.comp.id];
+          connectedPin = otherToMeta.pin;
+        }
+
+        // If we found current, propagate it to this wire
+        if (connectedPin && Math.abs(current) > 1e-9) {
+          // Use same current magnitude but adjust direction for this wire
+          const speed = 0.2;
+
+          // Determine flow direction: if current flows INTO the shared node from other wire,
+          // it flows OUT of the shared node on this wire
+          const isPin1 = connectedPin.name === "1" || connectedPin.name === "+";
+          let flowIntoSharedNode = false;
+
+          if (isPin1) {
+            flowIntoSharedNode = (current < 0); // OUT of pin 1
+          } else {
+            flowIntoSharedNode = (current > 0); // OUT of pin 2
+          }
+
+          // Now for this wire: if flow is into shared node from other wire,
+          // it flows out through this wire
+          let direction = 1;
+          if (wire.fromPinId === endPinId) {
+            // Shared node is at start of this wire
+            direction = flowIntoSharedNode ? 1 : -1; // Flow OUT = forward
+          } else {
+            // Shared node is at end of this wire
+            direction = flowIntoSharedNode ? -1 : 1; // Flow IN = forward
+          }
+
+          return { active: true, speed, direction };
+        }
+      }
+    }
+
+    return null;
+  };
+
   const getWireFlow = (wire) => {
     // 1. If we have simulation data, prioritize that
     if (simulationData?.currents) {
@@ -314,59 +404,15 @@ export default function Canvas({
         }
 
         if (connectedPin && Math.abs(current) > 1e-9) { // Threshold 1nA
-            // Calculate Speed based on magnitude (logarithmic)
-            // 1mA -> speed ~4, 1A -> speed ~8
-            const absI = Math.abs(current);
-            // const speed = Math.min(12, Math.max(1, Math.log10(absI / 1e-6) * 0.2 + 2));
-            const speed = 0.2
+            return calculateFlowParams(current, connectedPin, wire);
+        }
 
-            // Calculate Direction
-            // Ngspice Convention: Current flows Pin 1 -> Pin 2 (or + -> -)
-            // We need to know if 'connectedPin' is Pin 1 or Pin 2
-            
-            // Assume Pin 1 is "1" or "+" or "in" (if diode/transistor?)
-            // Resistors/Caps: "1", "2". VDC: "+", "-"
-            
-            const isPin1 = connectedPin.name === "1" || connectedPin.name === "+";
-            // If current > 0, it flows INTO Pin 1 and OUT of Pin 2.
-            
-            // Flow on wire relative to polyline:
-            // Wire connects TO the pin.
-            // If wire is at Pin 1 (Input side of component):
-            //   Current > 0 means flow is INTO component.
-            //   So flow on wire is TOWARDS the pin.
-            //   If wire.fromPinId == connectedPin.id (Start of wire is at pin):
-            //      Flow is AWAY from start? No, wire connects pin to... elsewhere.
-            //      Wait, 'fromPinId' is the point at index 0.
-            //      If index 0 is connected to Pin 1.
-            //      Flow is INTO Pin 1 => Flow is INTO index 0.
-            //      This means flow is N -> 0. (Reverse direction).
-            //      So direction = -1.
-            
-            let flowIntoPin = false; 
-            if (isPin1) {
-                flowIntoPin = (current > 0); 
-            } else {
-                // Pin 2 (or -)
-                flowIntoPin = (current < 0); // If current negative, it flows INTO pin 2 (reverse)
-            }
-
-            // Map "Flow Into Pin" to Polyline Direction
-            let direction = 1;
-            
-            if (wire.fromPinId === connectedPin.id) {
-                // Pin is at Start (0).
-                // Flow Into Pin 0 => Flow N -> 0 => Direction -1
-                // Flow Out of Pin 0 => Flow 0 -> N => Direction 1
-                direction = flowIntoPin ? -1 : 1;
-            } else {
-                // Pin is at End (N).
-                // Flow Into Pin N => Flow 0 -> N => Direction 1
-                // Flow Out of Pin N => Flow N -> 0 => Direction -1
-                direction = flowIntoPin ? 1 : -1;
-            }
-
-            return { active: true, speed, direction };
+        // NEW: For wires without direct component connection,
+        // propagate current from connected wires at the same node
+        // This shows current on interconnecting wires (like ground return paths)
+        const propagatedFlow = propagateCurrentThroughNode(wire, fromMeta, toMeta);
+        if (propagatedFlow) {
+            return propagatedFlow;
         }
     }
 
