@@ -388,24 +388,191 @@ export default function Canvas({
 
       // ---- analog components (visual only) ----
       if (c.domain === ANALOG_DOMAIN) {
-        // Body
-        ctx.fillStyle = "#0f172a"; // slate-ish
-        ctx.strokeStyle = isSel ? "#FAD90E" : "#334155";
+        // Generic box for unknown, specific renderers for known types
+        const isSel = c.id === selectedCompId || selectedCompIds.includes(c.id);
+        
+        ctx.strokeStyle = isSel ? "#FAD90E" : "#e5e7eb"; // White-ish lines for analog
         ctx.lineWidth = isSel ? 3 : 2;
-        roundRect(ctx, c.x, c.y, c.w, c.h, 10);
-        ctx.fill();
-        ctx.stroke();
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
 
-        // Label
-        ctx.fillStyle = "#e5e7eb";
-        ctx.font = "bold 12px system-ui";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        drawStraightText(ctx, analogLabel(c), c.x + c.w / 2, c.y + c.h / 2, c);
-        ctx.textAlign = "left";
-        ctx.textBaseline = "alphabetic";
+        // Center coordinates (since we are already translated/rotated to top-left corner, 
+        // but symbol drawing is often easier from center or fitting w/h)
+        // Actually, existing rotation logic translates to center then rotates.
+        // So (0,0) in local space is the center of the component?
+        // Let's check the rotation logic above:
+        // ctx.translate(cx, cy); ctx.rotate(...); ctx.translate(-cx, -cy);
+        // So (c.x, c.y) is still top-left in the rotated context.
+        
+        const cx = c.x + c.w / 2;
+        const cy = c.y + c.h / 2;
 
-        // Pins
+        if (c.kind === ANALOG_KIND.R) {
+          // Resistor: Zig-zag
+          // Assume horizontal orientation by default (pins at left/right)
+          // Width is w, but pins take up some space.
+          // Draw zigzag between (c.x, cy) and (c.x + c.w, cy)
+          // actually, leave some lead wire.
+          
+          const lead = 10;
+          const segs = 6;
+          const amp = 6; // zigzag amplitude
+          
+          ctx.beginPath();
+          ctx.moveTo(c.x, cy);
+          ctx.lineTo(c.x + lead, cy);
+          
+          const zigW = (c.w - 2 * lead) / segs;
+          for (let i = 0; i < segs; i++) {
+             const x0 = c.x + lead + i * zigW;
+             const x1 = c.x + lead + (i + 0.5) * zigW;
+             const x2 = c.x + lead + (i + 1) * zigW;
+             const yOffset = (i % 2 === 0) ? -amp : amp;
+             ctx.lineTo(x1, cy + yOffset);
+             ctx.lineTo(x2, cy);
+          }
+          
+          ctx.lineTo(c.x + c.w, cy);
+          ctx.stroke();
+          
+          // Value Label
+          ctx.fillStyle = "#aaa";
+          ctx.font = "12px monospace";
+          ctx.textAlign = "center";
+          drawStraightText(ctx, analogLabel(c), cx, c.y - 8, c);
+
+        } else if (c.kind === ANALOG_KIND.C) {
+           // Capacitor: ||
+           const lead = (c.w - 8) / 2;
+           const plateH = 24;
+           
+           ctx.beginPath();
+           // Left lead
+           ctx.moveTo(c.x, cy);
+           ctx.lineTo(cx - 4, cy);
+           // Left plate
+           ctx.moveTo(cx - 4, cy - plateH/2);
+           ctx.lineTo(cx - 4, cy + plateH/2);
+           
+           // Right plate
+           ctx.moveTo(cx + 4, cy - plateH/2);
+           ctx.lineTo(cx + 4, cy + plateH/2);
+           // Right lead
+           ctx.moveTo(cx + 4, cy);
+           ctx.lineTo(c.x + c.w, cy);
+           
+           ctx.stroke();
+           
+           // Value Label
+           ctx.fillStyle = "#aaa";
+           ctx.font = "12px monospace";
+           ctx.textAlign = "center";
+           drawStraightText(ctx, analogLabel(c), cx, c.y - 8, c);
+
+        } else if (c.kind === ANALOG_KIND.L) {
+            // Inductor: Loops
+            const lead = 10;
+            const loops = 4;
+            const loopW = (c.w - 2 * lead) / loops;
+            
+            ctx.beginPath();
+            ctx.moveTo(c.x, cy);
+            ctx.lineTo(c.x + lead, cy);
+            
+            for(let i=0; i<loops; i++){
+                const lx = c.x + lead + i*loopW;
+                // Bezier for loop
+                // ctx.arc(lx + loopW/2, cy, loopW/2, Math.PI, 0); // simple arc
+                // slightly better loop:
+                ctx.bezierCurveTo(lx + loopW*0.25, cy - loopW, lx + loopW*0.75, cy - loopW, lx + loopW, cy);
+            }
+            
+            ctx.lineTo(c.x + c.w, cy);
+            ctx.stroke();
+
+            // Value Label
+            ctx.fillStyle = "#aaa";
+            ctx.font = "12px monospace";
+            ctx.textAlign = "center";
+            drawStraightText(ctx, analogLabel(c), cx, c.y - 8, c);
+
+        } else if (c.kind === ANALOG_KIND.VDC) {
+            // Voltage Source: Circle with + -
+            const r = 18;
+            
+            // Leads (vertical usually for VDC? No, standard box is horizontal)
+            // But analogParts defines pins as Top/Bottom for VDC:
+            // makePin("+", { x: 0, y: -h / 2 }), makePin("-", { x: 0, y: h / 2 })
+            // So leads are vertical relative to w,h box.
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Leads to pins (Top/Bottom)
+            ctx.beginPath();
+            ctx.moveTo(cx, c.y);
+            ctx.lineTo(cx, cy - r);
+            ctx.moveTo(cx, cy + r);
+            ctx.lineTo(cx, c.y + c.h);
+            ctx.stroke();
+            
+            // Signs
+            ctx.fillStyle = isSel ? "#FAD90E" : "#e5e7eb";
+            ctx.font = "bold 14px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("+", cx, cy - 8);
+            ctx.fillText("-", cx, cy + 8);
+            
+            // Label (Right side)
+            ctx.fillStyle = "#aaa";
+            ctx.font = "12px monospace";
+            ctx.textAlign = "left";
+            drawStraightText(ctx, analogLabel(c), c.x + c.w + 4, cy, c);
+
+        } else if (c.kind === ANALOG_KIND.GND) {
+             // GND symbol
+             const topY = c.y; // Pin is at 0,0 relative?
+             // analogParts defines GND pin at {x:0, y:0}.
+             // c.x, c.y is top-left of box?
+             // Actually, makeAnalogComponent sets x,y as passed.
+             // But size is 40x40.
+             // Pin offset is 0,0. This implies the pin is at the CENTER of the component box?
+             // Let's check analogParts.js... makePin(..., {x:0, y:0}).
+             // Yes, pin is at center.
+             
+             // Draw GND from center downwards
+             ctx.beginPath();
+             ctx.moveTo(cx, cy);
+             ctx.lineTo(cx, cy + 10);
+             
+             // Horizontal lines
+             ctx.moveTo(cx - 10, cy + 10);
+             ctx.lineTo(cx + 10, cy + 10);
+             
+             ctx.moveTo(cx - 6, cy + 15);
+             ctx.lineTo(cx + 6, cy + 15);
+             
+             ctx.moveTo(cx - 2, cy + 20);
+             ctx.lineTo(cx + 2, cy + 20);
+             ctx.stroke();
+             
+        } else {
+             // Fallback box
+            ctx.fillStyle = "#0f172a";
+            roundRect(ctx, c.x, c.y, c.w, c.h, 10);
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.fillStyle = "#e5e7eb";
+            ctx.font = "bold 12px system-ui";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            drawStraightText(ctx, analogLabel(c), cx, cy, c);
+        }
+
+        // Pins (draw them small)
         for (const p of c.pins || []) {
           const pos = pinPosition(c, p);
           const isHovered = hoveredPin?.pin?.id === p.id;
@@ -413,7 +580,7 @@ export default function Canvas({
             ctx.save();
             ctx.globalAlpha = 0.35;
             ctx.beginPath();
-            ctx.arc(pos.x, pos.y, 12, 0, Math.PI * 2);
+            ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
             ctx.fillStyle = "#60a5fa";
             ctx.fill();
             ctx.restore();

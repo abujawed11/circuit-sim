@@ -1,5 +1,6 @@
 import React from "react";
 import { KIND } from "../model/types";
+import { ANALOG_DOMAIN, ANALOG_KIND } from "../analog/model/analogTypes";
 
 export default function PropertiesPanel({ selection, circuit, updateComponent, onClose }) {
   if (selection.compIds.length !== 1) {
@@ -33,6 +34,19 @@ export default function PropertiesPanel({ selection, circuit, updateComponent, o
     updateComponent(nextComp);
   };
 
+  // Helper for Analog Value Parsing
+  // Splits "10k" -> { num: "10", suffix: "k" }
+  const parseAnalogValue = (valStr) => {
+    const m = (valStr || "").match(/^([\d\.]+)([pnumkMG]?)$/);
+    if (!m) return { num: valStr, suffix: "" };
+    return { num: m[1], suffix: m[2] };
+  };
+
+  const updateAnalogValue = (num, suffix) => {
+    const val = `${num}${suffix}`;
+    handleChange("value", val, false);
+  };
+
   return (
     <div className="w-64 border-l border-neutral-800 bg-neutral-950/60 backdrop-blur flex flex-col h-full">
       <div className="p-4 border-b border-neutral-800 font-semibold text-neutral-200 flex items-center justify-between">
@@ -56,7 +70,52 @@ export default function PropertiesPanel({ selection, circuit, updateComponent, o
             <div className="text-sm text-neutral-300 bg-neutral-900 px-2 py-1.5 rounded border border-neutral-800">
                 {comp.kind}
             </div>
+            {comp.ref && (
+              <div className="text-xs text-neutral-500 mt-1">Ref: {comp.ref}</div>
+            )}
         </div>
+
+        {/* ANALOG COMPONENTS */}
+        {comp.domain === ANALOG_DOMAIN && (
+            <div className="space-y-3">
+                <div className="space-y-1">
+                    <label className="text-xs font-medium text-neutral-500 uppercase">Value</label>
+                    <div className="flex gap-2">
+                        <input
+                            type="number"
+                            step="any"
+                            value={parseAnalogValue(comp.props?.value).num}
+                            onChange={(e) => updateAnalogValue(e.target.value, parseAnalogValue(comp.props?.value).suffix)}
+                            className="flex-1 bg-neutral-900 border border-neutral-800 rounded px-2 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-yellow-500/50"
+                            placeholder="10"
+                        />
+                        <select
+                            value={parseAnalogValue(comp.props?.value).suffix}
+                            onChange={(e) => updateAnalogValue(parseAnalogValue(comp.props?.value).num, e.target.value)}
+                            className="w-16 bg-neutral-900 border border-neutral-800 rounded px-2 py-1.5 text-sm text-neutral-200 focus:outline-none focus:border-yellow-500/50"
+                        >
+                            <option value="">-</option>
+                            <option value="p">p (pico)</option>
+                            <option value="n">n (nano)</option>
+                            <option value="u">u (micro)</option>
+                            <option value="m">m (milli)</option>
+                            <option value="k">k (kilo)</option>
+                            <option value="M">M (mega)</option>
+                            <option value="G">G (giga)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                {/* Unit Hint based on Kind */}
+                <div className="text-xs text-neutral-500">
+                   Unit: 
+                   {comp.kind === ANALOG_KIND.R ? " Ohms (Ω)" : 
+                    comp.kind === ANALOG_KIND.C ? " Farads (F)" : 
+                    comp.kind === ANALOG_KIND.L ? " Henries (H)" :
+                    comp.kind === ANALOG_KIND.VDC ? " Volts (V)" : ""}
+                </div>
+            </div>
+        )}
 
         {/* CLOCK Specifics */}
         {comp.kind === KIND.CLOCK && (

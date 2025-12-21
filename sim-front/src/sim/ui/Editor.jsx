@@ -1658,24 +1658,18 @@ export default function Editor() {
 
 
             {/* Canvas */}
-            <div className="flex-1" onDragOver={onDragOver} onDrop={onDrop}>
-                {/* <Canvas
-                    circuit={simulated}
-                    onPlace={addAt}
-                    onToggleInput={toggleInput}
-                    onConnectPins={connectPins}
-                    onMoveComponent={moveComponent}
-                    onDeleteComponent={deleteComponent}
-                    onDuplicateComponent={duplicateComponent}
-                    onDeleteWire={deleteWire}
-                    onDeleteMultiple={deleteMultiple}
-                    onUpdateWire={onUpdateWire}
-                    onSplitWire={onSplitWire}
-                    onSplitWireAndStartDraft={onSplitWireAndStartDraft}
-                    onToggleClockMode={toggleClockMode}
-                    onSetComponentValue={setComponentValue}
-                    onSetButtonPressed={setButtonPressed}
-                /> */}
+            <div className="flex-1 relative" onDragOver={onDragOver} onDrop={onDrop}>
+                {/* Run Analog Button (Overlay) */}
+                <button
+                    onClick={runAnalog}
+                    className="absolute top-4 right-4 z-40 flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-black font-bold py-2 px-4 rounded-full shadow-lg transition-transform active:scale-95"
+                    title="Run Analog Simulation (ngspice)"
+                >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Run
+                </button>
 
                 <Canvas
                     circuit={simulated}
