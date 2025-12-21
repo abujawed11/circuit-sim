@@ -1,0 +1,10 @@
+* Test Circuit Option
+.options savecurrents
+V1 n1 0 DC 5
+R1 n1 0 1k
+.control
+op
+wrdata test_op_opt.csv v(n1) i(R1)
+quit
+.endc
+.end

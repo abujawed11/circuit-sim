@@ -1,0 +1,12 @@
+* Test Circuit Mixed Lower
+V1 n1 0 DC 5
+R1 n1 n2 1k
+C1 n2 0 1u
+L1 n2 n3 1m
+R2 n3 0 1k
+.control
+op
+wrdata test_mixed_lower.csv v(n1) v(n2) v(n3) @v1[i] @r1[i] @c1[i] @l1[i] @r2[i]
+quit
+.endc
+.end

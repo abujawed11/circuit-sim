@@ -89,6 +89,8 @@ export function toSpiceNetlist({
 
   const uniqueRef = makeUniqueRefFn(refsInCircuit);
 
+  const emittedElements = [];
+
   // Optional: emit sources first (cleaner). SPICE doesn't require this, but it helps readability.
   const ordered = [
     ...analogComponents.filter((c) => c?.domain === "analog" && c.kind === ANALOG_KIND.VDC),
@@ -109,6 +111,7 @@ export function toSpiceNetlist({
       const n1 = p1 ? nodeOf(pinToNode, p1) : `nc_${ref}_1`;
       const n2 = p2 ? nodeOf(pinToNode, p2) : `nc_${ref}_2`;
       lines.push(`${ref} ${n1} ${n2} ${value}`);
+      emittedElements.push(ref);
       continue;
     }
 
@@ -118,37 +121,46 @@ export function toSpiceNetlist({
       const nPlus = pPlus ? nodeOf(pinToNode, pPlus) : `nc_${ref}_p`;
       const nMinus = pMinus ? nodeOf(pinToNode, pMinus) : SPICE_GROUND_NODE;
       lines.push(`${ref} ${nPlus} ${nMinus} DC ${value}`);
+      emittedElements.push(ref);
       continue;
     }
   }
 
+  // --- Signals to Record ---
+  // 1. Voltages: all unique nodes except 0
+  const uniqueNodes = new Set(Object.values(pinToNode));
+  uniqueNodes.delete(SPICE_GROUND_NODE); 
+  const voltageSignals = Array.from(uniqueNodes).map(n => `v(${n})`);
+
+  // 2. Currents: all emitted elements (R, C, L, V) using ngspice device parameter syntax @ref[i]
+  // Ngspice requires lowercase device names for this syntax
+  const currentSignals = emittedElements.map(ref => `@${ref.toLowerCase()}[i]`);
+
+  const allSignals = [...voltageSignals, ...currentSignals].join(" ");
+
   // --- Analysis Commands ---
   const analysis = options.analysis || { type: "op" };
 
+  lines.push(".control");
+
   if (analysis.type === "op") {
-    lines.push(".op");
+    lines.push("op");
+    if (allSignals) {
+      lines.push(`wrdata out_op.csv ${allSignals}`);
+    }
   } else if (analysis.type === "tran") {
     const step = analysis.tran?.step || "1u";
     const stop = analysis.tran?.stop || "10m";
 
-    // Collect all unique nodes to probe
-    const uniqueNodes = new Set(Object.values(pinToNode));
-    uniqueNodes.delete(SPICE_GROUND_NODE); // Don't probe ground explicitly usually
-
-    // If no nodes, we can't probe much, but run anyway
-    const signals = Array.from(uniqueNodes).map(n => `v(${n})`).join(" ");
-
-    lines.push(".control");
-    // Add "uic" (use initial conditions) to skip DC operating point calculation
-    // This makes capacitors start uncharged and inductors start with zero current
-    // producing actual transient waveforms instead of flat DC steady-state values
+    // Use "uic" to skip DC op point for transient
     lines.push(`tran ${step} ${stop} uic`);
-    if (signals) {
-      lines.push(`wrdata out.csv ${signals}`);
+    if (allSignals) {
+      lines.push(`wrdata out.csv ${allSignals}`);
     }
-    lines.push("quit");
-    lines.push(".endc");
   }
+
+  lines.push("quit");
+  lines.push(".endc");
 
   lines.push(".end");
   return lines.join("\n");

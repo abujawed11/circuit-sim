@@ -1,0 +1,9 @@
+* Test Circuit Device Param
+V1 n1 0 DC 5
+R1 n1 0 1k
+.control
+op
+wrdata test_op_dev.csv v(n1) @r1[i] @v1[i]
+quit
+.endc
+.end

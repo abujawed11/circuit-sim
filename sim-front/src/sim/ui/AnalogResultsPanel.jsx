@@ -38,26 +38,57 @@ export default function AnalogResultsPanel({ result, onClose }) {
           </div>
         )}
 
-        {/* Results: OP */}
-        {results?.analysis === "op" && results.op?.nodeVoltages && (
-          <div>
-            <div className="font-semibold text-neutral-300 text-xs mb-2">Node Voltages (DC)</div>
-            <table className="w-full text-xs text-left border-collapse">
-              <thead>
-                <tr className="border-b border-neutral-700 text-neutral-500">
-                  <th className="py-1">Node</th>
-                  <th className="py-1">Voltage (V)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(results.op.nodeVoltages).map(([node, vol]) => (
-                  <tr key={node} className="border-b border-neutral-800 font-mono text-neutral-300">
-                    <td className="py-1">{node}</td>
-                    <td className="py-1">{typeof vol === 'number' ? vol.toFixed(4) : vol}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* Results: OP / DC */}
+        {results?.analysis === "op" && results.dc && (
+          <div className="space-y-4">
+            {/* Node Voltages */}
+            {results.dc.nodeVoltages && results.dc.nodeVoltages.length > 0 && (
+              <div>
+                <div className="font-semibold text-neutral-300 text-xs mb-2">Node Voltages (DC)</div>
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-neutral-700 text-neutral-500">
+                      <th className="py-1">Node</th>
+                      <th className="py-1">Voltage (V)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.dc.nodeVoltages.map(({ node, voltage }) => (
+                      <tr key={node} className="border-b border-neutral-800 font-mono text-neutral-300">
+                        <td className="py-1">{node}</td>
+                        <td className="py-1">{typeof voltage === 'number' ? voltage.toFixed(4) : voltage}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Element Currents */}
+            {results.dc.elementCurrents && results.dc.elementCurrents.length > 0 && (
+              <div>
+                <div className="font-semibold text-neutral-300 text-xs mb-2">Element Currents (DC)</div>
+                <div className="text-[10px] text-neutral-500 mb-1">
+                  (Positive = current entering first pin)
+                </div>
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-neutral-700 text-neutral-500">
+                      <th className="py-1">Element</th>
+                      <th className="py-1">Current (A)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {results.dc.elementCurrents.map(({ element, current }) => (
+                      <tr key={element} className="border-b border-neutral-800 font-mono text-neutral-300">
+                        <td className="py-1">{element}</td>
+                        <td className="py-1">{typeof current === 'number' ? current.toExponential(4) : current}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

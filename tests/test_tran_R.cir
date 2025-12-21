@@ -1,0 +1,9 @@
+* Test Circuit Tran
+V1 n1 0 DC 5
+R1 n1 0 1k
+.control
+tran 1u 1m uic
+wrdata test_tran_R.csv v(n1) i(R1)
+quit
+.endc
+.end

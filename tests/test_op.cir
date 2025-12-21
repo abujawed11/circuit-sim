@@ -1,0 +1,9 @@
+* Test Circuit
+V1 n1 0 DC 5
+R1 n1 0 1k
+.control
+op
+wrdata out_op.csv v(n1) i(V1)
+quit
+.endc
+.end

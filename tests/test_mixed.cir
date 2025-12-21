@@ -1,0 +1,12 @@
+* Test Circuit Mixed
+V1 n1 0 DC 5
+R1 n1 n2 1k
+C1 n2 0 1u
+L1 n2 n3 1m
+R2 n3 0 1k
+.control
+op
+wrdata test_mixed.csv v(n1) v(n2) v(n3) @V1[i] @R1[i] @C1[i] @L1[i] @R2[i]
+quit
+.endc
+.end

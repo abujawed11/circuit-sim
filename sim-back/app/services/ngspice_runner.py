@@ -154,7 +154,7 @@ def run_ngspice(netlist: str, analysis_type: str, timeout_s: int = 30) -> Dict[s
             return _parse_tran_results(temp_dir, raw_output, netlist)
 
         if analysis_type == "op":
-            return _parse_op_results(raw_output)
+            return _parse_op_wrdata_results(temp_dir, raw_output, netlist)
 
         return {
             "ok": False,
@@ -197,7 +197,7 @@ def _detect_tran_column_offset(vals: List[float], num_vars: int) -> int:
     # Heuristic 1: Duplicate time column
     # If col[0] and col[1] are very close (within 1e-12), assume duplicate time
     if abs(col1 - col0) < 1e-12:
-        print(f"DETECTION: Duplicate time column detected: col[0]={col0}, col[1]={col1}")
+        # print(f"DETECTION: Duplicate time column detected: col[0]={col0}, col[1]={col1}")
         return 2
 
     # Heuristic 2: Index column
@@ -207,11 +207,11 @@ def _detect_tran_column_offset(vals: List[float], num_vars: int) -> int:
         # Also check if we have enough columns for index + time + vars
         expected_cols = 1 + 1 + num_vars  # index + time + data
         if len(vals) >= expected_cols:
-            print(f"DETECTION: Index column detected: col[0]={col0} (index), col[1]={col1} (time)")
+            # print(f"DETECTION: Index column detected: col[0]={col0} (index), col[1]={col1} (time)")
             return 2
 
     # Standard layout: time v1 v2 v3...
-    print(f"DETECTION: Standard layout detected: col[0]={col0} (time)")
+    # print(f"DETECTION: Standard layout detected: col[0]={col0} (time)")
     return 1
 
 
@@ -241,9 +241,14 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
 
     csv_path = os.path.join(temp_dir, out_file)
     if not os.path.exists(csv_path):
+        # Include snippet of raw output to help debug why file wasn't written
+        raw_snippet = "\n".join(raw_output.splitlines()[:10])
         return {
             "ok": False,
-            "errors": [f"Output file not found: {out_file}. Did ngspice write it?"],
+            "errors": [
+                f"Output file not found: {out_file}. Did ngspice write it?",
+                f"Ngspice output snippet:\n{raw_snippet}"
+            ],
             "raw": raw_output,
         }
 
@@ -255,20 +260,6 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
     try:
         with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
             lines_list = f.readlines()
-
-        # DEBUG: Print first few lines of CSV AND save a copy for inspection
-        print("=" * 60)
-        print("=== CSV FILE CONTENT (first 5 lines) ===")
-        for i, line in enumerate(lines_list[:5]):
-            print(f"Line {i}: {line.strip()}")
-        print(f"=== Expected variables: {var_names} ===")
-        print("=" * 60)
-
-        # Save CSV to a fixed location for debugging
-        import shutil
-        debug_csv = os.path.join(os.path.dirname(__file__), "..", "..", "debug_out.csv")
-        shutil.copy(csv_path, debug_csv)
-        print(f"DEBUG: Saved CSV to {debug_csv}")
 
         for line in lines_list:
             row = line.strip()
@@ -289,10 +280,7 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
             # Auto-detect column layout on first valid numeric row
             if data_start_col is None:
                 data_start_col = _detect_tran_column_offset(vals, len(var_names))
-                print(f"First numeric row: {vals}")
-                print(f"Detected transient data start column: {data_start_col}")
-                print(f"Number of columns in row: {len(vals)}")
-                print(f"Number of expected variables: {len(var_names)}")
+                # print(f"Detected transient data start column: {data_start_col}")
 
             # Extract time (always from first column in alternating format)
             t = vals[0]
@@ -331,6 +319,108 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
             "errors": [f"Error parsing transient output {out_file}: {str(e)}"],
             "raw": raw_output,
         }
+
+
+# ----------------------------
+# OP parsing (wrdata -> out_op.csv)
+# ----------------------------
+
+def _parse_op_wrdata_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[str, Any]:
+    """
+    Parse node voltages and currents from 'wrdata' CSV output for DC (.op).
+    
+    Returns structured JSON:
+      {
+        "nodeVoltages": [{"node": "n1", "voltage": 5.0}, ...],
+        "elementCurrents": [{"element": "R1", "current": 0.002}, ...]
+      }
+    """
+    out_file, var_names = _extract_wrdata_vars(netlist)
+    if not out_file:
+         return {
+            "ok": False,
+            "errors": ["No wrdata command found in netlist for OP analysis."],
+            "raw": raw_output,
+        }
+    
+    csv_path = os.path.join(temp_dir, out_file)
+    if not os.path.exists(csv_path):
+        # Include snippet of raw output
+        raw_snippet = "\n".join(raw_output.splitlines()[:20])
+        return {
+            "ok": False,
+            "errors": [
+                f"OP output file not found: {out_file}. Did ngspice write it?",
+                f"Ngspice output snippet:\n{raw_snippet}"
+            ],
+            "raw": raw_output,
+        }
+
+    last_vals: List[float] = []
+    
+    try:
+        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                parts = _split_row(line)
+                if not parts:
+                    continue
+                try:
+                    vals = [float(p) for p in parts]
+                    last_vals = vals
+                except ValueError:
+                    continue
+    except Exception as e:
+        return {
+            "ok": False,
+            "errors": [f"Error parsing OP output: {str(e)}"],
+            "raw": raw_output,
+        }
+
+    if not last_vals:
+         return {
+            "ok": False,
+            "errors": ["OP output file is empty."],
+            "raw": raw_output,
+        }
+
+    # Extract values assuming alternating format: scale val1 scale val2 ...
+    node_voltages = []
+    element_currents = []
+
+    for i, name in enumerate(var_names):
+        val_idx = 1 + (i * 2)
+        if val_idx < len(last_vals):
+            val = last_vals[val_idx]
+            
+            # Clean name logic
+            clean_name = name
+            is_current = False
+            
+            # Remove v() or i() wrapper
+            if name.lower().startswith("v(") and name.endswith(")"):
+                clean_name = name[2:-1]
+            elif name.lower().startswith("i(") and name.endswith(")"):
+                clean_name = name[2:-1]
+                is_current = True
+            elif name.startswith("@") and name.endswith("[i]"):
+                clean_name = name[1:-3].upper()
+                is_current = True
+            
+            if is_current:
+                element_currents.append({"element": clean_name, "current": val})
+            else:
+                node_voltages.append({"node": clean_name, "voltage": val})
+
+    return {
+        "ok": True,
+        "analysis": "op",
+        "dc": {
+            "nodeVoltages": node_voltages,
+            "elementCurrents": element_currents
+        },
+        "raw": raw_output
+    }
+
 
 
 # ----------------------------
