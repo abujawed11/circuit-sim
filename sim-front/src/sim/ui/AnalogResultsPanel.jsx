@@ -1,14 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useState } from "react";
 import TransientPlot from "../analog/ui/TransientPlot";
 
 export default function AnalogResultsPanel({ result, onClose }) {
-  if (!result) return null;
+  const { ok, warnings, errors, netlist, results, meters } = result || {};
+  const [selectedTraceNames, setSelectedTraceNames] = useState(null); // null = use defaults
 
-  const { ok, warnings, errors, netlist, results, meters } = result;
-  const [selectedTraceNames, setSelectedTraceNames] = useState([]);
-
-  const tranData = useMemo(() => {
-    if (results?.analysis !== "tran" || !results.tran) return null;
+  const tranData = (() => {
+    if (results?.analysis !== "tran" || !results?.tran) return null;
 
     // Preferred backend shape: { x, series: [{name,y}] }
     if (Array.isArray(results.tran.series) && Array.isArray(results.tran.x)) {
@@ -22,37 +20,39 @@ export default function AnalogResultsPanel({ result, onClose }) {
     }
 
     // Back-compat fallback: { time, seriesMap: {name: []} }
-    if (Array.isArray(results.tran.time) && results.tran.seriesMap && typeof results.tran.seriesMap === "object") {
+    if (
+      Array.isArray(results.tran.time) &&
+      results.tran.seriesMap &&
+      typeof results.tran.seriesMap === "object"
+    ) {
       const series = Object.entries(results.tran.seriesMap).map(([name, y]) => ({ name, y }));
       return { x: results.tran.time, series };
     }
 
     return null;
-  }, [results?.analysis, results?.tran]);
+  })();
 
-  const availableTraceNames = useMemo(() => {
-    if (!tranData?.series) return [];
-    return tranData.series.map((s) => s.name).filter(Boolean);
-  }, [tranData]);
+  const availableTraceNames = tranData?.series ? tranData.series.map((s) => s.name).filter(Boolean) : [];
 
-  useEffect(() => {
-    if (!tranData) return;
-
+  const defaultSelectedTraceNames = (() => {
     const volts = availableTraceNames.filter((n) => String(n).toLowerCase().startsWith("v("));
     const currents = availableTraceNames.filter((n) => {
       const s = String(n).toLowerCase();
       return s.startsWith("i(") || (s.startsWith("@") && s.endsWith("[i]"));
     });
+    return volts.length > 0 ? [...volts, ...currents.slice(0, 2)] : availableTraceNames.slice(0, 6);
+  })();
 
-    const next = volts.length > 0 ? [...volts, ...currents.slice(0, 2)] : availableTraceNames.slice(0, 6);
-    setSelectedTraceNames(next);
-  }, [availableTraceNames, tranData]);
+  const effectiveSelectedTraceNames = selectedTraceNames ?? defaultSelectedTraceNames;
 
   const toggleTrace = (name) => {
-    setSelectedTraceNames((prev) =>
-      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
-    );
+    setSelectedTraceNames((prev) => {
+      const base = prev ?? defaultSelectedTraceNames;
+      return base.includes(name) ? base.filter((n) => n !== name) : [...base, name];
+    });
   };
+
+  if (!result) return null;
 
   return (
     <div className="absolute top-16 right-4 w-96 max-h-[80vh] bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
@@ -277,15 +277,15 @@ export default function AnalogResultsPanel({ result, onClose }) {
                         <label key={name} className="flex items-center gap-2 text-[11px]">
                           <input
                             type="checkbox"
-                            checked={selectedTraceNames.includes(name)}
-                            onChange={() => toggleTrace(name)}
-                          />
-                          <span className="font-mono text-neutral-200">{name}</span>
-                        </label>
-                      ))}
-                    </div>
+                          checked={effectiveSelectedTraceNames.includes(name)}
+                          onChange={() => toggleTrace(name)}
+                        />
+                        <span className="font-mono text-neutral-200">{name}</span>
+                      </label>
+                    ))}
                   </div>
-                  <TransientPlot x={tranData.x} series={tranData.series} selectedNames={selectedTraceNames} />
+                </div>
+                  <TransientPlot x={tranData.x} series={tranData.series} selectedNames={effectiveSelectedTraceNames} />
                 </div>
               )}
             </details>
