@@ -75,6 +75,8 @@ export default function Editor() {
 
     const [propertiesSelection, setPropertiesSelection] = useState(null); // { compIds: [id], wireIds: [] } | null
     const [analogResult, setAnalogResult] = useState(null);
+    const [isSimulating, setIsSimulating] = useState(false);
+    const [simulationData, setSimulationData] = useState(null); // { currents: { compId: amps } }
 
     const updateAnalogAnalysis = (updates) => {
         const next = structuredClone(circuit);
@@ -85,20 +87,48 @@ export default function Editor() {
         updateCircuit(next);
     };
 
-    const runAnalog = async () => {
-        setAnalogResult(null);
+    const handleToggleSimulation = async () => {
+        if (isSimulating) {
+            setIsSimulating(false);
+            setSimulationData(null);
+            return;
+        }
+
+        setIsSimulating(true);
+        setAnalogResult(null); // Clear old results while loading
+
         // Ensure defaults if missing (for old saves)
         const analysis = circuit.analogAnalysis || { type: "op", tran: { step: "1u", stop: "10m" } };
         
-        const res = await simulateAnalog({
-            analogComponents: circuit.components,
-            wires: circuit.wires,
-            components: circuit.components,
-            options: {
-                analysis
+        try {
+            const res = await simulateAnalog({
+                analogComponents: circuit.components,
+                wires: circuit.wires,
+                components: circuit.components,
+                options: {
+                    analysis
+                }
+            });
+            
+            setAnalogResult(res);
+
+            if (res.ok && res.results && res.results.dc && res.results.dc.elementCurrents) {
+                // Map currents to component IDs for visualization
+                const currentMap = {};
+                for (const item of res.results.dc.elementCurrents) {
+                    // item = { element: "R1", current: 0.005 }
+                    // Find component with this ref
+                    const comp = circuit.components.find(c => c.ref === item.element);
+                    if (comp) {
+                        currentMap[comp.id] = item.current;
+                    }
+                }
+                setSimulationData({ currents: currentMap });
             }
-        });
-        setAnalogResult(res);
+        } catch (e) {
+            console.error("Simulation failed:", e);
+            setIsSimulating(false); // Stop if failed
+        }
     };
 
 
@@ -1555,10 +1585,14 @@ export default function Editor() {
                         )}
 
                         <button 
-                            onClick={runAnalog}
-                            className="w-full rounded bg-yellow-600 hover:bg-yellow-500 text-black font-semibold text-xs py-1.5 transition-colors"
+                            onClick={handleToggleSimulation}
+                            className={`w-full rounded font-semibold text-xs py-1.5 transition-colors ${
+                                isSimulating 
+                                ? "bg-red-600 hover:bg-red-500 text-white" 
+                                : "bg-yellow-600 hover:bg-yellow-500 text-black"
+                            }`}
                         >
-                            Run Analog
+                            {isSimulating ? "Stop Simulation" : "Run Analog"}
                         </button>
                     </div>
 
@@ -1661,18 +1695,34 @@ export default function Editor() {
             <div className="flex-1 relative" onDragOver={onDragOver} onDrop={onDrop}>
                 {/* Run Analog Button (Overlay) */}
                 <button
-                    onClick={runAnalog}
-                    className="absolute top-4 right-4 z-40 flex items-center gap-2 bg-yellow-600 hover:bg-yellow-500 text-black font-bold py-2 px-4 rounded-full shadow-lg transition-transform active:scale-95"
-                    title="Run Analog Simulation (ngspice)"
+                    onClick={handleToggleSimulation}
+                    className={`absolute top-4 right-4 z-40 flex items-center gap-2 font-bold py-2 px-4 rounded-full shadow-lg transition-transform active:scale-95 ${
+                        isSimulating 
+                        ? "bg-red-600 hover:bg-red-500 text-white" 
+                        : "bg-yellow-600 hover:bg-yellow-500 text-black"
+                    }`}
+                    title={isSimulating ? "Stop Simulation" : "Run Analog Simulation (ngspice)"}
                 >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M8 5v14l11-7z" />
-                    </svg>
-                    Run
+                    {isSimulating ? (
+                        <>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <rect x="6" y="6" width="12" height="12" />
+                            </svg>
+                            Stop
+                        </>
+                    ) : (
+                        <>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M8 5v14l11-7z" />
+                            </svg>
+                            Run
+                        </>
+                    )}
                 </button>
 
                 <Canvas
                     circuit={simulated}
+                    simulationData={simulationData}
                     onPlace={addAt}
                     onAddJunction={onAddJunction}
                     onAddJunctionAndConnect={onAddJunctionAndConnect}

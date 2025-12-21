@@ -203,7 +203,8 @@ export default function Canvas({
   onSetComponentValue,
   onSetButtonPressed,
   onOpenProperties,
-  onSelectionChange, // âœ… ADD THIS
+  onSelectionChange,
+  simulationData, // âœ… Receive simulation data (currents)
 }) {
   const ref = useRef(null);
 
@@ -280,6 +281,112 @@ export default function Canvas({
   }, [selectedCompIds, selectedWireIds, selectedCompId, selectedWireId]);
 
 
+  // Monotonic time for animation
+  const [animTime, setAnimTime] = useState(0);
+
+  // Animation loop
+  React.useEffect(() => {
+    let animId;
+    const loop = () => {
+      setAnimTime((t) => t + 1);
+      animId = requestAnimationFrame(loop);
+    };
+    animId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animId);
+  }, []);
+
+  const getWireFlow = (wire) => {
+    // 1. If we have simulation data, prioritize that
+    if (simulationData?.currents) {
+        const fromMeta = getPinMeta(wire.fromPinId);
+        const toMeta = getPinMeta(wire.toPinId);
+        
+        let current = 0;
+        let connectedPin = null; // The pin on the component we found current for
+        
+        // Try to find a component with current at either end
+        if (fromMeta && simulationData.currents[fromMeta.comp.id] !== undefined) {
+            current = simulationData.currents[fromMeta.comp.id];
+            connectedPin = fromMeta.pin;
+        } else if (toMeta && simulationData.currents[toMeta.comp.id] !== undefined) {
+            current = simulationData.currents[toMeta.comp.id];
+            connectedPin = toMeta.pin;
+        }
+
+        if (connectedPin && Math.abs(current) > 1e-9) { // Threshold 1nA
+            // Calculate Speed based on magnitude (logarithmic)
+            // 1mA -> speed ~4, 1A -> speed ~8
+            const absI = Math.abs(current);
+            // const speed = Math.min(12, Math.max(1, Math.log10(absI / 1e-6) * 0.2 + 2));
+            const speed = 0.2
+
+            // Calculate Direction
+            // Ngspice Convention: Current flows Pin 1 -> Pin 2 (or + -> -)
+            // We need to know if 'connectedPin' is Pin 1 or Pin 2
+            
+            // Assume Pin 1 is "1" or "+" or "in" (if diode/transistor?)
+            // Resistors/Caps: "1", "2". VDC: "+", "-"
+            
+            const isPin1 = connectedPin.name === "1" || connectedPin.name === "+";
+            // If current > 0, it flows INTO Pin 1 and OUT of Pin 2.
+            
+            // Flow on wire relative to polyline:
+            // Wire connects TO the pin.
+            // If wire is at Pin 1 (Input side of component):
+            //   Current > 0 means flow is INTO component.
+            //   So flow on wire is TOWARDS the pin.
+            //   If wire.fromPinId == connectedPin.id (Start of wire is at pin):
+            //      Flow is AWAY from start? No, wire connects pin to... elsewhere.
+            //      Wait, 'fromPinId' is the point at index 0.
+            //      If index 0 is connected to Pin 1.
+            //      Flow is INTO Pin 1 => Flow is INTO index 0.
+            //      This means flow is N -> 0. (Reverse direction).
+            //      So direction = -1.
+            
+            let flowIntoPin = false; 
+            if (isPin1) {
+                flowIntoPin = (current > 0); 
+            } else {
+                // Pin 2 (or -)
+                flowIntoPin = (current < 0); // If current negative, it flows INTO pin 2 (reverse)
+            }
+
+            // Map "Flow Into Pin" to Polyline Direction
+            let direction = 1;
+            
+            if (wire.fromPinId === connectedPin.id) {
+                // Pin is at Start (0).
+                // Flow Into Pin 0 => Flow N -> 0 => Direction -1
+                // Flow Out of Pin 0 => Flow 0 -> N => Direction 1
+                direction = flowIntoPin ? -1 : 1;
+            } else {
+                // Pin is at End (N).
+                // Flow Into Pin N => Flow 0 -> N => Direction 1
+                // Flow Out of Pin N => Flow N -> 0 => Direction -1
+                direction = flowIntoPin ? 1 : -1;
+            }
+
+            return { active: true, speed, direction };
+        }
+    }
+
+    // 2. Fallback to Digital Logic High (Legacy/Digital mode)
+    const fromMeta = getPinMeta(wire.fromPinId);
+    const toMeta = getPinMeta(wire.toPinId);
+    if (!fromMeta || !toMeta) return null;
+
+    const val = fromMeta.pin.value;
+    if (val === LV.HIGH) {
+        let direction = 1;
+        if (fromMeta.pin.dir === "in" && toMeta.pin.dir === "out") {
+            direction = -1;
+        }
+        return { active: true, speed: 2, direction };
+    }
+    
+    return null;
+  };
+
   const draw = () => {
     const canvas = ref.current;
     if (!canvas) return;
@@ -325,14 +432,31 @@ export default function Canvas({
       const fromPin = findPin(circuit, w.fromPinId);
       const v = fromPin?.pin?.value ?? LV.X;
 
+      // Base wire
       ctx.strokeStyle = isSel ? "#FAD90E" : wireColorForValue(v);
       ctx.lineWidth = isSel ? 4 : 3;
+      ctx.setLineDash([]); // Ensure solid
 
       const pts = buildWirePolyline(from, to, w.points);
       drawPolyline(ctx, pts);
 
-
-
+      // Current Flow Animation
+      const flow = getWireFlow(w);
+      if (flow && flow.active) {
+          ctx.strokeStyle = "#00FF00"; // Yellow/Bright for current
+          ctx.lineWidth = 4;
+          ctx.setLineDash([4, 10]); // dot dash pattern
+          
+          // Use monotonic animTime for variable speed animation
+          ctx.lineDashOffset = -animTime * (flow.speed || 2) * flow.direction;
+          
+          // Draw over same path
+          drawPolyline(ctx, pts);
+          
+          // Reset
+          ctx.setLineDash([]);
+          ctx.lineDashOffset = 0;
+      }
 
       if (isSel) {
         for (const p of pts) {
