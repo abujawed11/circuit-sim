@@ -1,9 +1,58 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import TransientPlot from "../analog/ui/TransientPlot";
 
 export default function AnalogResultsPanel({ result, onClose }) {
   if (!result) return null;
 
   const { ok, warnings, errors, netlist, results, meters } = result;
+  const [selectedTraceNames, setSelectedTraceNames] = useState([]);
+
+  const tranData = useMemo(() => {
+    if (results?.analysis !== "tran" || !results.tran) return null;
+
+    // Preferred backend shape: { x, series: [{name,y}] }
+    if (Array.isArray(results.tran.series) && Array.isArray(results.tran.x)) {
+      return { x: results.tran.x, series: results.tran.series };
+    }
+
+    // Back-compat backend shape: { time, series: {name: []} }
+    if (Array.isArray(results.tran.time) && results.tran.series && typeof results.tran.series === "object") {
+      const series = Object.entries(results.tran.series).map(([name, y]) => ({ name, y }));
+      return { x: results.tran.time, series };
+    }
+
+    // Back-compat fallback: { time, seriesMap: {name: []} }
+    if (Array.isArray(results.tran.time) && results.tran.seriesMap && typeof results.tran.seriesMap === "object") {
+      const series = Object.entries(results.tran.seriesMap).map(([name, y]) => ({ name, y }));
+      return { x: results.tran.time, series };
+    }
+
+    return null;
+  }, [results?.analysis, results?.tran]);
+
+  const availableTraceNames = useMemo(() => {
+    if (!tranData?.series) return [];
+    return tranData.series.map((s) => s.name).filter(Boolean);
+  }, [tranData]);
+
+  useEffect(() => {
+    if (!tranData) return;
+
+    const volts = availableTraceNames.filter((n) => String(n).toLowerCase().startsWith("v("));
+    const currents = availableTraceNames.filter((n) => {
+      const s = String(n).toLowerCase();
+      return s.startsWith("i(") || (s.startsWith("@") && s.endsWith("[i]"));
+    });
+
+    const next = volts.length > 0 ? [...volts, ...currents.slice(0, 2)] : availableTraceNames.slice(0, 6);
+    setSelectedTraceNames(next);
+  }, [availableTraceNames, tranData]);
+
+  const toggleTrace = (name) => {
+    setSelectedTraceNames((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+    );
+  };
 
   return (
     <div className="absolute top-16 right-4 w-96 max-h-[80vh] bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
@@ -173,30 +222,73 @@ export default function AnalogResultsPanel({ result, onClose }) {
                 <thead>
                   <tr className="border-b border-neutral-700 text-neutral-500">
                     <th className="py-1 px-2">Time (s)</th>
-                    {Object.keys(results.tran.series).map(sig => (
-                        <th key={sig} className="py-1 px-2">{sig}</th>
-                    ))}
+                    {(() => {
+                      const names = Array.isArray(results.tran.series)
+                        ? results.tran.series.map((s) => s.name)
+                        : Object.keys(results.tran.series || {});
+                      return names.map((sig) => (
+                        <th key={sig} className="py-1 px-2">
+                          {sig}
+                        </th>
+                      ));
+                    })()}
                   </tr>
                 </thead>
                 <tbody>
-                  {results.tran.time.slice(0, 20).map((t, i) => (
+                  {(results.tran.time || results.tran.x || []).slice(0, 20).map((t, i) => (
                     <tr key={i} className="border-b border-neutral-800 font-mono text-neutral-300">
                       <td className="py-1 px-2">{t.toExponential(3)}</td>
-                      {Object.keys(results.tran.series).map(sig => (
+                      {(() => {
+                        if (Array.isArray(results.tran.series)) {
+                          return results.tran.series.map((s) => (
+                            <td key={s.name} className="py-1 px-2">
+                              {s.y?.[i]?.toExponential?.(3)}
+                            </td>
+                          ));
+                        }
+                        const keys = Object.keys(results.tran.series || {});
+                        return keys.map((sig) => (
                           <td key={sig} className="py-1 px-2">
-                              {results.tran.series[sig][i]?.toExponential(3)}
+                            {results.tran.series[sig][i]?.toExponential(3)}
                           </td>
-                      ))}
+                        ));
+                      })()}
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {results.tran.time.length > 20 && (
+              {((results.tran.time || results.tran.x || []).length > 20) && (
                   <div className="text-xs text-neutral-500 mt-1 italic">
-                      ... {results.tran.time.length - 20} more rows
+                      ... {(results.tran.time || results.tran.x || []).length - 20} more rows
                   </div>
               )}
             </div>
+
+            <details className="mt-4 text-xs text-neutral-400" open>
+              <summary className="cursor-pointer hover:text-neutral-300">Transient Plot</summary>
+              {!tranData ? (
+                <div className="mt-2 text-neutral-500">Run transient analysis to see plot.</div>
+              ) : (
+                <div className="mt-2 space-y-3">
+                  <div className="max-h-28 overflow-auto border border-neutral-800 rounded p-2 bg-black/30">
+                    <div className="text-[11px] text-neutral-500 mb-1">Traces</div>
+                    <div className="grid grid-cols-1 gap-1">
+                      {availableTraceNames.map((name) => (
+                        <label key={name} className="flex items-center gap-2 text-[11px]">
+                          <input
+                            type="checkbox"
+                            checked={selectedTraceNames.includes(name)}
+                            onChange={() => toggleTrace(name)}
+                          />
+                          <span className="font-mono text-neutral-200">{name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <TransientPlot x={tranData.x} series={tranData.series} selectedNames={selectedTraceNames} />
+                </div>
+              )}
+            </details>
           </div>
         )}
 

@@ -186,6 +186,11 @@ export function toSpiceNetlist({
     const stop = analysis.tran?.stop || "10m";
 
     // Use "uic" to skip DC op point for transient
+    // Also force a stable, parseable wrdata format across ngspice builds:
+    // - `wr_vecnames`: include a header row with vector names
+    // - `wr_singlescale`: include "time" once as the first column
+    lines.push("set wr_vecnames");
+    lines.push("set wr_singlescale");
     lines.push(`tran ${step} ${stop} uic`);
     if (allSignals) {
       lines.push(`wrdata out.csv ${allSignals}`);

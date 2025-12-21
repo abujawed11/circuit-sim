@@ -7,6 +7,7 @@ import Canvas from "./Canvas";
 import ICCreationDialog from "./ICCreationDialog";
 import PropertiesPanel from "./PropertiesPanel";
 import AnalogResultsPanel from "./AnalogResultsPanel";
+import GraphModal from "./GraphModal";
 import { simulate } from "../engine/simulate";
 import { simulateAnalog } from "../analog/api/simulateAnalog";
 import { ANALOG_DOMAIN } from "../analog/model/analogTypes"; // "analog"
@@ -77,6 +78,7 @@ export default function Editor() {
     const [analogResult, setAnalogResult] = useState(null);
     const [isSimulating, setIsSimulating] = useState(false);
     const [simulationData, setSimulationData] = useState(null); // { currents: { compId: amps } }
+    const [showGraphModal, setShowGraphModal] = useState(false);
 
     const updateAnalogAnalysis = (updates) => {
         const next = structuredClone(circuit);
@@ -131,26 +133,47 @@ export default function Editor() {
                     }
                 } else if (res.results.analysis === "tran" && res.results.tran) {
                     const time = res.results.tran.time || [];
-                    const series = res.results.tran.series || {};
                     const lastIdx = Math.max(0, time.length - 1);
 
-                    for (const [sig, values] of Object.entries(series)) {
-                        const v = Array.isArray(values) ? values[lastIdx] : undefined;
-                        if (typeof v !== "number") continue;
+                    const tran = res.results.tran;
+                    if (Array.isArray(tran.series)) {
+                        for (const s of tran.series) {
+                            const sig = s?.name;
+                            const values = s?.y;
+                            const v = Array.isArray(values) ? values[lastIdx] : undefined;
+                            if (typeof v !== "number") continue;
 
-                        // Voltage probes: v(node)
-                        const mV = String(sig).match(/^v\((.+)\)$/i);
-                        if (mV) {
-                            nodeVoltageMap[mV[1]] = v;
-                            continue;
+                            const mV = String(sig).match(/^v\((.+)\)$/i);
+                            if (mV) {
+                                nodeVoltageMap[mV[1]] = v;
+                                continue;
+                            }
+
+                            const mI = String(sig).match(/^@(.+)\[i\]$/i);
+                            if (mI) {
+                                const ref = mI[1].toUpperCase();
+                                const comp = circuit.components.find((c) => String(c.ref || "").toUpperCase() === ref);
+                                if (comp) currentMap[comp.id] = v;
+                            }
                         }
+                    } else if (tran.series && typeof tran.series === "object") {
+                        // Back-compat: older backend shape { series: { name: [] } }
+                        for (const [sig, values] of Object.entries(tran.series)) {
+                            const v = Array.isArray(values) ? values[lastIdx] : undefined;
+                            if (typeof v !== "number") continue;
 
-                        // Current probes: @ref[i]
-                        const mI = String(sig).match(/^@(.+)\[i\]$/i);
-                        if (mI) {
-                            const ref = mI[1].toUpperCase();
-                            const comp = circuit.components.find((c) => String(c.ref || "").toUpperCase() === ref);
-                            if (comp) currentMap[comp.id] = v;
+                            const mV = String(sig).match(/^v\((.+)\)$/i);
+                            if (mV) {
+                                nodeVoltageMap[mV[1]] = v;
+                                continue;
+                            }
+
+                            const mI = String(sig).match(/^@(.+)\[i\]$/i);
+                            if (mI) {
+                                const ref = mI[1].toUpperCase();
+                                const comp = circuit.components.find((c) => String(c.ref || "").toUpperCase() === ref);
+                                if (comp) currentMap[comp.id] = v;
+                            }
                         }
                     }
                 }
@@ -1771,32 +1794,48 @@ export default function Editor() {
 
             {/* Canvas */}
             <div className="flex-1 relative" onDragOver={onDragOver} onDrop={onDrop}>
-                {/* Run Analog Button (Overlay) */}
-                <button
-                    onClick={handleToggleSimulation}
-                    className={`absolute top-4 right-4 z-40 flex items-center gap-2 font-bold py-2 px-4 rounded-full shadow-lg transition-transform active:scale-95 ${
-                        isSimulating 
-                        ? "bg-red-600 hover:bg-red-500 text-white" 
-                        : "bg-yellow-600 hover:bg-yellow-500 text-black"
-                    }`}
-                    title={isSimulating ? "Stop Simulation" : "Run Analog Simulation (ngspice)"}
-                >
-                    {isSimulating ? (
-                        <>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <rect x="6" y="6" width="12" height="12" />
-                            </svg>
-                            Stop
-                        </>
-                    ) : (
-                        <>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M8 5v14l11-7z" />
-                            </svg>
-                            Run
-                        </>
-                    )}
-                </button>
+                {/* Top Right Button Group */}
+                <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
+                    {/* Graph Button */}
+                    <button
+                        onClick={() => setShowGraphModal(true)}
+                        className="flex items-center gap-2 font-semibold py-2 px-4 rounded-full shadow-lg transition-all hover:scale-105 active:scale-95 bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-500 hover:to-blue-400 text-white"
+                        title="Open Graph Viewer"
+                        disabled={!analogResult || !analogResult.results}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                        </svg>
+                        Graph
+                    </button>
+
+                    {/* Run Analog Button */}
+                    <button
+                        onClick={handleToggleSimulation}
+                        className={`flex items-center gap-2 font-bold py-2 px-4 rounded-full shadow-lg transition-transform active:scale-95 ${
+                            isSimulating
+                            ? "bg-red-600 hover:bg-red-500 text-white"
+                            : "bg-yellow-600 hover:bg-yellow-500 text-black"
+                        }`}
+                        title={isSimulating ? "Stop Simulation" : "Run Analog Simulation (ngspice)"}
+                    >
+                        {isSimulating ? (
+                            <>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <rect x="6" y="6" width="12" height="12" />
+                                </svg>
+                                Stop
+                            </>
+                        ) : (
+                            <>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M8 5v14l11-7z" />
+                                </svg>
+                                Run
+                            </>
+                        )}
+                    </button>
+                </div>
 
                 <Canvas
                     circuit={simulated}
@@ -1831,10 +1870,18 @@ export default function Editor() {
                     circuit={circuit}
                 />
 
-                <AnalogResultsPanel 
-                    result={analogResult} 
-                    onClose={() => setAnalogResult(null)} 
+                <AnalogResultsPanel
+                    result={analogResult}
+                    onClose={() => setAnalogResult(null)}
                 />
+
+                {/* Graph Modal */}
+                {showGraphModal && (
+                    <GraphModal
+                        result={analogResult}
+                        onClose={() => setShowGraphModal(false)}
+                    />
+                )}
 
             </div>
 
