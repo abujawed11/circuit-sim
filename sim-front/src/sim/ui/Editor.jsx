@@ -149,9 +149,10 @@ export default function Editor() {
                                 continue;
                             }
 
-                            const mI = String(sig).match(/^@(.+)\[i\]$/i);
+                            // Match current signals: @device[i] (OP) or i(device) (TRAN)
+                            const mI = String(sig).match(/^(?:@(.+)\[i\]|i\((.+)\))$/i);
                             if (mI) {
-                                const ref = mI[1].toUpperCase();
+                                const ref = (mI[1] || mI[2]).toUpperCase();
                                 const comp = circuit.components.find((c) => String(c.ref || "").toUpperCase() === ref);
                                 if (comp) currentMap[comp.id] = v;
                             }
@@ -168,9 +169,10 @@ export default function Editor() {
                                 continue;
                             }
 
-                            const mI = String(sig).match(/^@(.+)\[i\]$/i);
+                            // Match current signals: @device[i] (OP) or i(device) (TRAN)
+                            const mI = String(sig).match(/^(?:@(.+)\[i\]|i\((.+)\))$/i);
                             if (mI) {
-                                const ref = mI[1].toUpperCase();
+                                const ref = (mI[1] || mI[2]).toUpperCase();
                                 const comp = circuit.components.find((c) => String(c.ref || "").toUpperCase() === ref);
                                 if (comp) currentMap[comp.id] = v;
                             }

@@ -348,11 +348,34 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
     except Exception as e:
         warnings.append(f"Transient table parse failed, trying legacy parser: {str(e)}")
 
-    # Fallback: legacy alternating format (time val1 time val2 ...).
+    # Fallback: Handle both wr_singlescale and legacy alternating formats
     try:
         data = {"time": [], "series": {name: [] for name in var_names}}
         with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
             lines_list = f.readlines()
+
+        # Detect format from first data row
+        first_vals = None
+        for line in lines_list:
+            parts = _split_row(line.strip())
+            if not parts or len(parts) < 2:
+                continue
+            try:
+                first_vals = [float(p) for p in parts]
+                break
+            except ValueError:
+                continue
+
+        if not first_vals:
+            raise ValueError("No valid numeric data found in CSV")
+
+        # Determine if using wr_singlescale (time v1 v2 v3...) or alternating (time v1 time v2...)
+        # wr_singlescale: columns = 1 (time) + N (values)
+        # alternating: columns = 1 (time) + N*2 (time+value pairs)
+        expected_cols_singlescale = 1 + len(var_names)
+        expected_cols_alternating = 1 + (len(var_names) * 2)
+
+        use_singlescale = abs(len(first_vals) - expected_cols_singlescale) < abs(len(first_vals) - expected_cols_alternating)
 
         for line in lines_list:
             row = line.strip()
@@ -371,12 +394,22 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
             t = vals[0]
             data["time"].append(t)
 
-            for i, name in enumerate(var_names):
-                val_idx = 1 + (i * 2)
-                if val_idx < len(vals):
-                    data["series"][name].append(vals[val_idx])
-                else:
-                    data["series"][name].append(float("nan"))
+            if use_singlescale:
+                # Format: time val1 val2 val3 ...
+                for i, name in enumerate(var_names):
+                    val_idx = 1 + i
+                    if val_idx < len(vals):
+                        data["series"][name].append(vals[val_idx])
+                    else:
+                        data["series"][name].append(float("nan"))
+            else:
+                # Format: time val1 time val2 time val3 ...
+                for i, name in enumerate(var_names):
+                    val_idx = 1 + (i * 2)
+                    if val_idx < len(vals):
+                        data["series"][name].append(vals[val_idx])
+                    else:
+                        data["series"][name].append(float("nan"))
 
         x_full = data["time"]
         series_names = list(data["series"].keys())

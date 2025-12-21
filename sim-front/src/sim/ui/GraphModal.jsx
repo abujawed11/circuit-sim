@@ -42,6 +42,7 @@ export default function GraphModal({ result, onClose }) {
     const volts = availableTraceNames.filter((n) => String(n).toLowerCase().startsWith("v("));
     const currents = availableTraceNames.filter((n) => {
       const s = String(n).toLowerCase();
+      // Match i(device) or @device[i] formats
       return s.startsWith("i(") || (s.startsWith("@") && s.endsWith("[i]"));
     });
     return { voltageTraces: volts, currentTraces: currents };

@@ -165,18 +165,16 @@ export function toSpiceNetlist({
     .filter((n) => n && n !== SPICE_GROUND_NODE)
     .map((n) => `v(${n})`);
 
-  // 2. Currents: all emitted elements (R, C, L, V) using ngspice device parameter syntax @ref[i]
-  // Ngspice requires lowercase device names for this syntax
-  const currentSignals = emittedElements.map(ref => `@${ref.toLowerCase()}[i]`);
-
-  const allSignals = [...voltageSignals, ...currentSignals].join(" ");
-
   // --- Analysis Commands ---
   const analysis = options.analysis || { type: "op" };
 
   lines.push(".control");
 
   if (analysis.type === "op") {
+    // For OP analysis: use @device[i] syntax (works fine for DC)
+    const currentSignals = emittedElements.map(ref => `@${ref.toLowerCase()}[i]`);
+    const allSignals = [...voltageSignals, ...currentSignals].join(" ");
+
     lines.push("op");
     if (allSignals) {
       lines.push(`wrdata out_op.csv ${allSignals}`);
@@ -185,12 +183,22 @@ export function toSpiceNetlist({
     const step = analysis.tran?.step || "1u";
     const stop = analysis.tran?.stop || "10m";
 
+    // For TRAN analysis: use @device[i] too, but ensure it's saved as a vector (see savecurrents/save below).
+    const currentSignals = emittedElements.map(ref => `@${ref.toLowerCase()}[i]`);
+    const allSignals = [...voltageSignals, ...currentSignals].join(" ");
+
     // Use "uic" to skip DC op point for transient
     // Also force a stable, parseable wrdata format across ngspice builds:
     // - `wr_vecnames`: include a header row with vector names
     // - `wr_singlescale`: include "time" once as the first column
     lines.push("set wr_vecnames");
     lines.push("set wr_singlescale");
+    // Ensure device currents are saved as time-varying vectors.
+    // Without this, ngspice may write the final-point scalar repeated on every row for @ref[i].
+    lines.push("set savecurrents");
+    if (allSignals) {
+      lines.push(`save ${allSignals}`);
+    }
     lines.push(`tran ${step} ${stop} uic`);
     if (allSignals) {
       lines.push(`wrdata out.csv ${allSignals}`);

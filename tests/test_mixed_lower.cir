@@ -1,12 +1,18 @@
-* Test Circuit Mixed Lower
-V1 n1 0 DC 5
-R1 n1 n2 1k
-C1 n2 0 1u
-L1 n2 n3 1m
-R2 n3 0 1k
+* Analog Circuit
+V1 n1 0 DC 5.3
+R1 n1 n2 500
+R3 n1 n2 1.4k
+R6 n2 0 1k
+R7 n1 n2 900
+C1 n2 0 100u
+L2 n2 0 2
 .control
-op
-wrdata test_mixed_lower.csv v(n1) v(n2) v(n3) @v1[i] @r1[i] @c1[i] @l1[i] @r2[i]
+set wr_vecnames
+set wr_singlescale
+set savecurrents
+save v(n1) v(n2) @v1[i] @r1[i] @r3[i] @r6[i] @r7[i] @c1[i] @l2[i]
+tran 1u 10m uic
+wrdata out.csv v(n1) v(n2) @v1[i] @r1[i] @r3[i] @r6[i] @r7[i] @c1[i] @l2[i]
 quit
 .endc
 .end
