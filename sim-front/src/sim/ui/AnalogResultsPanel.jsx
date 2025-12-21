@@ -3,7 +3,7 @@ import React from "react";
 export default function AnalogResultsPanel({ result, onClose }) {
   if (!result) return null;
 
-  const { ok, warnings, errors, netlist, results } = result;
+  const { ok, warnings, errors, netlist, results, meters } = result;
 
   return (
     <div className="absolute top-16 right-4 w-96 max-h-[80vh] bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
@@ -41,6 +41,57 @@ export default function AnalogResultsPanel({ result, onClose }) {
         {/* Results: OP / DC */}
         {results?.analysis === "op" && results.dc && (
           <div className="space-y-4">
+            {/* Meters */}
+            {(meters?.voltmeters?.length > 0 || meters?.ammeters?.length > 0) && (
+              <div>
+                <div className="font-semibold text-neutral-300 text-xs mb-2">Meters</div>
+
+                {meters?.voltmeters?.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs text-neutral-400 mb-1">Voltmeters</div>
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-neutral-700 text-neutral-500">
+                          <th className="py-1">Ref</th>
+                          <th className="py-1">V (V)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {meters.voltmeters.map(({ ref, voltage }, i) => (
+                          <tr key={`${ref || "VM"}_${i}`} className="border-b border-neutral-800 font-mono text-neutral-300">
+                            <td className="py-1">{ref || "VM"}</td>
+                            <td className="py-1">{typeof voltage === "number" ? voltage.toFixed(4) : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {meters?.ammeters?.length > 0 && (
+                  <div>
+                    <div className="text-xs text-neutral-400 mb-1">Ammeters</div>
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-neutral-700 text-neutral-500">
+                          <th className="py-1">Ref</th>
+                          <th className="py-1">I (A)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {meters.ammeters.map(({ ref, current }, i) => (
+                          <tr key={`${ref || "VA"}_${i}`} className="border-b border-neutral-800 font-mono text-neutral-300">
+                            <td className="py-1">{ref || "VA"}</td>
+                            <td className="py-1">{typeof current === "number" ? current.toExponential(4) : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Node Voltages */}
             {results.dc.nodeVoltages && results.dc.nodeVoltages.length > 0 && (
               <div>
@@ -95,6 +146,27 @@ export default function AnalogResultsPanel({ result, onClose }) {
         {/* Results: TRAN */}
         {results?.analysis === "tran" && results.tran && (
           <div>
+            {(meters?.voltmeters?.length > 0 || meters?.ammeters?.length > 0) && (
+              <div className="mb-4">
+                <div className="font-semibold text-neutral-300 text-xs mb-2">Meters (Last Sample)</div>
+                {meters?.voltmeters?.length > 0 && (
+                  <div className="text-xs text-neutral-400 mb-1">
+                    Voltmeters:{" "}
+                    {meters.voltmeters
+                      .map((m) => `${m.ref || "VM"}=${typeof m.voltage === "number" ? m.voltage.toFixed(4) : "—"}V`)
+                      .join("  ")}
+                  </div>
+                )}
+                {meters?.ammeters?.length > 0 && (
+                  <div className="text-xs text-neutral-400">
+                    Ammeters:{" "}
+                    {meters.ammeters
+                      .map((m) => `${m.ref || "VA"}=${typeof m.current === "number" ? m.current.toExponential(3) : "—"}A`)
+                      .join("  ")}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="font-semibold text-neutral-300 text-xs mb-2">Transient Analysis (Preview)</div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left border-collapse whitespace-nowrap">

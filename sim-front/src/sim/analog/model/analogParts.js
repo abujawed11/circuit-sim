@@ -166,6 +166,18 @@ export const makeAnalogComponent = (kind, x = 120, y = 120, existingComponents =
         makePin("-", { x: 0, y: h / 2 }),
       ];
     }
+    if (kind === ANALOG_KIND.VOLTMETER) {
+      return [
+        makePin("+", { x: -w / 2, y: 0 }),
+        makePin("-", { x: w / 2, y: 0 }),
+      ];
+    }
+    if (kind === ANALOG_KIND.AMMETER) {
+      return [
+        makePin("1", { x: -w / 2, y: 0 }),
+        makePin("2", { x: w / 2, y: 0 }),
+      ];
+    }
     if (kind === ANALOG_KIND.GND) {
       return [makePin(SPICE_GROUND_NODE, { x: 0, y: 0 })];
     }

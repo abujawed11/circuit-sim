@@ -8,6 +8,8 @@ export const ANALOG_KIND = Object.freeze({
   C: "A_C",
   L: "A_L",
   VDC: "A_VDC",
+  VOLTMETER: "A_VM",
+  AMMETER: "A_AM",
   GND: "A_GND",
 });
 
@@ -41,6 +43,22 @@ export const ANALOG_PART_DEFS = Object.freeze({
     defaultValue: "5",
     size: { w: 100, h: 50 },
     pins: ["+", "-"],
+  },
+  [ANALOG_KIND.VOLTMETER]: {
+    label: "Voltmeter",
+    refPrefix: "VM",
+    defaultValue: "",
+    size: { w: 64, h: 64 },
+    pins: ["+", "-"],
+  },
+  [ANALOG_KIND.AMMETER]: {
+    label: "Ammeter",
+    // IMPORTANT: emitted as a 0V independent voltage source so ngspice can report branch current.
+    // SPICE element type is determined by the first letter, so keep this starting with "V".
+    refPrefix: "VA",
+    defaultValue: "",
+    size: { w: 64, h: 64 },
+    pins: ["1", "2"],
   },
   [ANALOG_KIND.GND]: {
     label: "Ground",

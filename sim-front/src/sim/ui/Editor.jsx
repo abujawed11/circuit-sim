@@ -110,37 +110,97 @@ export default function Editor() {
                 }
             });
             
-            setAnalogResult(res);
-
-            if (res.ok && res.results && res.results.dc) {
-                // Map currents to component IDs for visualization
+            if (res.ok && res.results) {
                 const currentMap = {};
-                if (res.results.dc.elementCurrents) {
-                    for (const item of res.results.dc.elementCurrents) {
-                        // item = { element: "R1", current: 0.005 }
-                        // Find component with this ref
-                        const comp = circuit.components.find(c => c.ref === item.element);
-                        if (comp) {
-                            currentMap[comp.id] = item.current;
+                const nodeVoltageMap = {};
+
+                if (res.results.analysis === "op" && res.results.dc) {
+                    // Map currents to component IDs for visualization
+                    if (res.results.dc.elementCurrents) {
+                        for (const item of res.results.dc.elementCurrents) {
+                            const comp = circuit.components.find((c) => c.ref === item.element);
+                            if (comp) currentMap[comp.id] = item.current;
+                        }
+                    }
+
+                    // Build node voltage map for direction calculation
+                    if (res.results.dc.nodeVoltages) {
+                        for (const item of res.results.dc.nodeVoltages) {
+                            nodeVoltageMap[item.node] = item.voltage;
+                        }
+                    }
+                } else if (res.results.analysis === "tran" && res.results.tran) {
+                    const time = res.results.tran.time || [];
+                    const series = res.results.tran.series || {};
+                    const lastIdx = Math.max(0, time.length - 1);
+
+                    for (const [sig, values] of Object.entries(series)) {
+                        const v = Array.isArray(values) ? values[lastIdx] : undefined;
+                        if (typeof v !== "number") continue;
+
+                        // Voltage probes: v(node)
+                        const mV = String(sig).match(/^v\((.+)\)$/i);
+                        if (mV) {
+                            nodeVoltageMap[mV[1]] = v;
+                            continue;
+                        }
+
+                        // Current probes: @ref[i]
+                        const mI = String(sig).match(/^@(.+)\[i\]$/i);
+                        if (mI) {
+                            const ref = mI[1].toUpperCase();
+                            const comp = circuit.components.find((c) => String(c.ref || "").toUpperCase() === ref);
+                            if (comp) currentMap[comp.id] = v;
                         }
                     }
                 }
 
-                // Build node voltage map for direction calculation
-                const nodeVoltageMap = {};
-                if (res.results.dc.nodeVoltages) {
-                    for (const item of res.results.dc.nodeVoltages) {
-                        nodeVoltageMap[item.node] = item.voltage;
-                    }
-                }
-
-                // Pass node data and voltages for node-based current visualization
                 setSimulationData({
                     currents: currentMap,
                     nodes: res.nodes || {},
-                    nodeVoltages: nodeVoltageMap
+                    nodeVoltages: nodeVoltageMap,
                 });
+
+                const pinToNode = res.nodes?.pinToNode || {};
+                const meters = {
+                    voltmeters: [],
+                    ammeters: [],
+                };
+
+                for (const c of circuit.components || []) {
+                    if (c?.domain !== ANALOG_DOMAIN) continue;
+
+                    if (c.kind === ANALOG_KIND.VOLTMETER) {
+                        const pPlus = c.pins?.find((p) => p.name === "+")?.id;
+                        const pMinus = c.pins?.find((p) => p.name === "-")?.id;
+                        const nPlus = pPlus ? pinToNode[pPlus] : null;
+                        const nMinus = pMinus ? pinToNode[pMinus] : null;
+                        const vPlus = nPlus === "0" ? 0 : nodeVoltageMap[nPlus];
+                        const vMinus = nMinus === "0" ? 0 : nodeVoltageMap[nMinus];
+                        const voltage =
+                            typeof vPlus === "number" && typeof vMinus === "number" ? vPlus - vMinus : null;
+
+                        meters.voltmeters.push({
+                            ref: c.ref,
+                            nodePlus: nPlus,
+                            nodeMinus: nMinus,
+                            voltage,
+                        });
+                    }
+
+                    if (c.kind === ANALOG_KIND.AMMETER) {
+                        meters.ammeters.push({
+                            ref: c.ref,
+                            current: typeof currentMap[c.id] === "number" ? currentMap[c.id] : null,
+                        });
+                    }
+                }
+
+                setAnalogResult({ ...res, meters });
+                return;
             }
+
+            setAnalogResult(res);
         } catch (e) {
             console.error("Simulation failed:", e);
             setIsSimulating(false); // Stop if failed
@@ -272,6 +332,8 @@ export default function Editor() {
                     { kind: ANALOG_KIND.C, label: ANALOG_PART_DEFS[ANALOG_KIND.C].label, short: "C", hint: ANALOG_PART_DEFS[ANALOG_KIND.C].defaultValue },
                     { kind: ANALOG_KIND.L, label: ANALOG_PART_DEFS[ANALOG_KIND.L].label, short: "L", hint: ANALOG_PART_DEFS[ANALOG_KIND.L].defaultValue },
                     { kind: ANALOG_KIND.VDC, label: "VDC", short: "V", hint: ANALOG_PART_DEFS[ANALOG_KIND.VDC].defaultValue },
+                    { kind: ANALOG_KIND.VOLTMETER, label: ANALOG_PART_DEFS[ANALOG_KIND.VOLTMETER].label, short: "VM", hint: "Measure V across nodes" },
+                    { kind: ANALOG_KIND.AMMETER, label: ANALOG_PART_DEFS[ANALOG_KIND.AMMETER].label, short: "AM", hint: "Measure I in series" },
                     { kind: ANALOG_KIND.GND, label: "GND", short: "0", hint: "Node 0" },
                 ],
             },

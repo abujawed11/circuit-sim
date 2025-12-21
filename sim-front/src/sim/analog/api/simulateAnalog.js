@@ -82,7 +82,8 @@ function detectFloatingNodes(analogComponents, pinToNode) {
         if (!c || c.domain !== "analog") continue;
 
         // Skip ground components (they don't create connections, just mark node as "0")
-        if (c.kind === ANALOG_KIND.GND) continue;
+        // Skip voltmeter (open-circuit measurement; should not create electrical connectivity)
+        if (c.kind === ANALOG_KIND.GND || c.kind === ANALOG_KIND.VOLTMETER) continue;
 
         // Get all nodes this component touches
         const componentNodes = [];
@@ -218,7 +219,12 @@ export async function simulateAnalog({ analogComponents = [], wires = [], compon
             warnings.push(`${displayName} is missing ref (e.g., ${exampleRef}).`);
         }
         const value = c.props?.value;
-        if (c.kind !== ANALOG_KIND.GND && (value === undefined || value === null || value === "")) {
+        if (
+            c.kind !== ANALOG_KIND.GND &&
+            c.kind !== ANALOG_KIND.VOLTMETER &&
+            c.kind !== ANALOG_KIND.AMMETER &&
+            (value === undefined || value === null || value === "")
+        ) {
             warnings.push(`${displayName} has empty value.`);
         }
 
@@ -274,7 +280,7 @@ export async function simulateAnalog({ analogComponents = [], wires = [], compon
                     errors.push(...(results.errors || []));
                 }
             }
-        } catch (e) {
+        } catch {
             warnings.push("Backend unreachable (is python server running?). Showing netlist only.");
         }
     }

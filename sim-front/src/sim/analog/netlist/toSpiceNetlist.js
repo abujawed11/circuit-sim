@@ -101,13 +101,24 @@ export function toSpiceNetlist({
 
   // Optional: emit sources first (cleaner). SPICE doesn't require this, but it helps readability.
   const ordered = [
-    ...analogComponents.filter((c) => c?.domain === "analog" && c.kind === ANALOG_KIND.VDC),
-    ...analogComponents.filter((c) => c?.domain === "analog" && c.kind !== ANALOG_KIND.VDC),
+    ...analogComponents.filter(
+      (c) =>
+        c?.domain === "analog" &&
+        (c.kind === ANALOG_KIND.VDC || c.kind === ANALOG_KIND.AMMETER)
+    ),
+    ...analogComponents.filter(
+      (c) =>
+        c?.domain === "analog" &&
+        c.kind !== ANALOG_KIND.VDC &&
+        c.kind !== ANALOG_KIND.AMMETER
+    ),
   ];
 
   for (const c of ordered) {
     if (!c || c.domain !== "analog") continue;
     if (c.kind === ANALOG_KIND.GND) continue;
+    // Voltmeter is a non-loading measurement device: do not emit it into the SPICE netlist.
+    if (c.kind === ANALOG_KIND.VOLTMETER) continue;
 
     const pins = c.pins || [];
     const ref = uniqueRef(c.ref || c.id);
@@ -132,6 +143,18 @@ export function toSpiceNetlist({
       lines.push(`${ref} ${nPlus} ${nMinus} DC ${value}`);
       emittedElements.push(ref);
       markUsedNodes(nPlus, nMinus);
+      continue;
+    }
+
+    if (c.kind === ANALOG_KIND.AMMETER) {
+      // Emit an ideal 0V voltage source so ngspice can report branch current through it.
+      const p1 = pins[0]?.id;
+      const p2 = pins[1]?.id;
+      const n1 = p1 ? nodeOf(pinToNode, p1) : `nc_${ref}_1`;
+      const n2 = p2 ? nodeOf(pinToNode, p2) : `nc_${ref}_2`;
+      lines.push(`${ref} ${n1} ${n2} DC 0`);
+      emittedElements.push(ref);
+      markUsedNodes(n1, n2);
       continue;
     }
   }
