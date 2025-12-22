@@ -764,11 +764,6 @@ export default function Canvas({
             // Voltage Source: Circle with + -
             const r = 18;
             
-            // Leads (vertical usually for VDC? No, standard box is horizontal)
-            // But analogParts defines pins as Top/Bottom for VDC:
-            // makePin("+", { x: 0, y: -h / 2 }), makePin("-", { x: 0, y: h / 2 })
-            // So leads are vertical relative to w,h box.
-            
             ctx.beginPath();
             ctx.arc(cx, cy, r, 0, Math.PI * 2);
             ctx.stroke();
@@ -789,6 +784,48 @@ export default function Canvas({
             ctx.fillText("+", cx, cy - 8);
             ctx.fillText("-", cx, cy + 8);
             
+            // Label (Right side)
+            ctx.fillStyle = "#aaa";
+            ctx.font = "12px monospace";
+            ctx.textAlign = "left";
+            drawStraightText(ctx, analogLabel(c), c.x + c.w + 4, cy, c);
+
+        } else if (c.kind === ANALOG_KIND.VAC) {
+            // AC Voltage Source: Circle with Sine Wave
+            const r = 18;
+            
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+            
+            // Leads to pins (Top/Bottom)
+            ctx.beginPath();
+            ctx.moveTo(cx, c.y);
+            ctx.lineTo(cx, cy - r);
+            ctx.moveTo(cx, cy + r);
+            ctx.lineTo(cx, c.y + c.h);
+            ctx.stroke();
+            
+            // Sine Wave Symbol
+            ctx.beginPath();
+            const waveW = 16;
+            const waveH = 6;
+            const wx = cx - waveW / 2;
+            const wy = cy;
+            
+            ctx.moveTo(wx, wy);
+            ctx.bezierCurveTo(
+              wx + waveW * 0.25, wy - waveH, 
+              wx + waveW * 0.25, wy + waveH, 
+              wx + waveW * 0.5, wy
+            );
+            ctx.bezierCurveTo(
+              wx + waveW * 0.75, wy - waveH, 
+              wx + waveW * 0.75, wy + waveH, 
+              wx + waveW, wy
+            );
+            ctx.stroke();
+
             // Label (Right side)
             ctx.fillStyle = "#aaa";
             ctx.font = "12px monospace";
@@ -2344,6 +2381,16 @@ export default function Canvas({
   // keyboard: delete, cancel, undo point, select all
   React.useEffect(() => {
     const onKeyDown = (e) => {
+      // Don't let canvas/editor shortcuts interfere with form controls (properties panel, dialogs, etc.)
+      const tag = e.target?.tagName;
+      if (
+        e.target?.isContentEditable ||
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT"
+      ) {
+        return;
+      }
       if (e.key === "Escape") {
         setDraft(null);
         setDrag(null);

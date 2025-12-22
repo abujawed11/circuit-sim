@@ -1080,7 +1080,16 @@ export default function Editor() {
     // Keyboard shortcuts
     React.useEffect(() => {
         const handleKeyDown = (e) => {
-            if (e.target.tagName === "INPUT") return; // Ignore if typing in input
+            // Ignore shortcuts while interacting with form controls (properties panel, dialogs, etc.)
+            const tag = e.target?.tagName;
+            if (
+                e.target?.isContentEditable ||
+                tag === "INPUT" ||
+                tag === "TEXTAREA" ||
+                tag === "SELECT"
+            ) {
+                return;
+            }
 
             if (e.key.toLowerCase() === "r") {
                 if (currentSelection.compIds.length > 0) {
