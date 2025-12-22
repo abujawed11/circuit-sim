@@ -78,6 +78,17 @@ const pickColor = (i) => {
   return palette[i % palette.length];
 };
 
+// --- TIME AXIS HELPERS ---
+const getTimeUnitInfo = (range) => {
+  const abs = Math.abs(range);
+  if (abs === 0) return { factor: 1, unit: "s" };
+  if (abs >= 1) return { factor: 1, unit: "s" };
+  if (abs >= 1e-3) return { factor: 1e3, unit: "ms" };
+  if (abs >= 1e-6) return { factor: 1e6, unit: "µs" };
+  if (abs >= 1e-9) return { factor: 1e9, unit: "ns" };
+  return { factor: 1, unit: "s" }; // fallback
+};
+
 // --- INTERACTIONS HELPER (Zoom, Pan, Reset) ---
 const installInteractions = (u, initialData) => {
   // 1. WHEEL ZOOM
@@ -282,7 +293,12 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
       scales: { x: { time: false } },
       axes: [
         {
-          label: "Time",
+          label: (u) => {
+            const min = u.scales.x.min;
+            const max = u.scales.x.max;
+            const info = getTimeUnitInfo(max - min);
+            return `Time (${info.unit})`;
+          },
           labelSize: 20,
           labelFont: "600 14px system-ui",
           size: 60,
@@ -290,7 +306,12 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
           stroke: "#a3a3a3",
           grid: { show: true, stroke: "#404040", width: 1 },
           ticks: { show: true, stroke: "#737373", width: 1 },
-          values: (u, ticks) => ticks.map((t) => formatTime(t)),
+          values: (u, ticks) => {
+            const min = u.scales.x.min;
+            const max = u.scales.x.max;
+            const info = getTimeUnitInfo(max - min);
+            return ticks.map(t => (t * info.factor).toFixed(2).replace(/\.?0+$/, ""));
+          },
         },
         {
           label: autoScaleCurrents ? `Current (${displayUnit})` : yAxisLabel,
