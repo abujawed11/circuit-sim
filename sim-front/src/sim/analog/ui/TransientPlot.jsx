@@ -78,21 +78,18 @@ const pickColor = (i) => {
   return palette[i % palette.length];
 };
 
-// --- ZOOM HELPER ---
-const installAxisWheelZoom = (u) => {
+// --- INTERACTIONS HELPER (Zoom, Pan, Reset) ---
+const installInteractions = (u, initialData) => {
+  // 1. WHEEL ZOOM
   const onWheel = (e) => {
     e.preventDefault();
 
     const rect = u.root.getBoundingClientRect();
-    // Mouse relative to u.root
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
     const { left, top, width, height } = u.bbox;
     
-    // Axis boundaries
-    // X-axis: below the plot area
-    // Y-axis: to the left of the plot area
     const isOverPlot = x >= left && x <= left + width && y >= top && y <= top + height;
     const isOverYAxis = x < left && y >= top && y <= top + height;
     const isOverXAxis = x >= left && x <= left + width && y > top + height;
@@ -106,7 +103,6 @@ const installAxisWheelZoom = (u) => {
 
     if (!targetAxis) return;
 
-    // 1.15 is a comfortable speed
     const factor = e.deltaY < 0 ? 0.9 : 1.1;
     
     const scaleKey = targetAxis;
@@ -120,12 +116,9 @@ const installAxisWheelZoom = (u) => {
     const span = max - min;
     if (span === 0) return;
 
-    // u.posToVal expects position relative to the plot area (bbox)
     const relPos = scaleKey === "x" ? (x - left) : (y - top);
     let val = u.posToVal(relPos, scaleKey);
     
-    // Clamp anchor if we are zooming from the axis area (outside plot)
-    // to prevent wild anchoring
     if (val < min) val = min;
     if (val > max) val = max;
 
@@ -138,8 +131,111 @@ const installAxisWheelZoom = (u) => {
     u.setScale(scaleKey, { min: newMin, max: newMax });
   };
 
+  // 2. PANNING (Left Click + Drag)
+  let isDragging = false;
+  let startX = 0;
+  let startY = 0;
+  let initScales = null;
+
+  const onMouseDown = (e) => {
+    if (e.button !== 0) return; // Left click only
+
+    // Only start if inside plot area
+    const rect = u.over.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const { left, top, width, height } = u.bbox;
+    
+    if (x < left || x > left + width || y < top || y > top + height) return;
+
+    e.preventDefault();
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    
+    initScales = {
+      x: { min: u.scales.x.min, max: u.scales.x.max },
+      y: { min: u.scales.y.min, max: u.scales.y.max },
+    };
+
+    u.over.style.cursor = "grabbing";
+  };
+
+  const onMouseMove = (e) => {
+    if (!isDragging || !initScales) return;
+    e.preventDefault();
+
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    const { width, height } = u.bbox;
+
+    // X Pan
+    // dx > 0 (move right) => we want data under cursor to move right => viewport moves left (min decreases)
+    // Wait: if I drag paper right, I see what was to the left. 
+    // uPlot coordinates: left is min, right is max.
+    // If I move mouse +10px (Right). The value at startX should now be at startX + 10.
+    // So the value at startX matches pixel startX + 10.
+    // This means the range shifted Left.
+    const xRange = initScales.x.max - initScales.x.min;
+    const xShift = -(dx / width) * xRange;
+
+    u.setScale("x", {
+      min: initScales.x.min + xShift,
+      max: initScales.x.max + xShift
+    });
+
+    // Y Pan
+    // dy > 0 (move down). Pixel 0 is top.
+    // uPlot Y scale: usually min at bottom? No, uPlot default is min at bottom.
+    // If min is bottom:
+    // Drag down (+dy). I want data to move down.
+    // High values move to larger Y-pixels.
+    // The window must shift Up (higher values).
+    const yRange = initScales.y.max - initScales.y.min;
+    const yShift = (dy / height) * yRange;
+
+    u.setScale("y", {
+      min: initScales.y.min + yShift,
+      max: initScales.y.max + yShift
+    });
+  };
+
+  const onMouseUp = (e) => {
+    if (isDragging) {
+      isDragging = false;
+      u.over.style.cursor = "default";
+    }
+  };
+
+  // 3. DOUBLE CLICK RESET
+  const onDblClick = (e) => {
+    e.preventDefault();
+    // Reset X to full range of data
+    if (initialData && initialData[0] && initialData[0].length > 0) {
+      const xs = initialData[0];
+      const min = xs[0];
+      const max = xs[xs.length - 1];
+      u.setScale("x", { min, max });
+    }
+    // Reset Y to auto
+    u.setScale("y", { min: null, max: null, auto: true });
+  };
+
+  // Attach listeners
   u.root.addEventListener("wheel", onWheel, { passive: false });
-  return () => u.root.removeEventListener("wheel", onWheel);
+  u.over.addEventListener("mousedown", onMouseDown);
+  u.over.addEventListener("dblclick", onDblClick);
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", onMouseUp);
+
+  return () => {
+    u.root.removeEventListener("wheel", onWheel);
+    u.over.removeEventListener("mousedown", onMouseDown);
+    u.over.removeEventListener("dblclick", onDblClick);
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  };
 };
 
 export default function TransientPlot({ x = [], series = [], selectedNames = [], autoScaleCurrents = false, yAxisLabel = "Value" }) {
@@ -224,7 +320,7 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
       },
       cursor: {
         show: true,
-        drag: { x: true, y: false },
+        drag: { x: false, y: false }, // Disable native zoom selection to allow Pan
         sync: { key: "myCursor" },
         points: {
           size: 6,
@@ -289,11 +385,11 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
     const u = new uPlot(opts, data, containerRef.current);
     plotRef.current = u;
 
-    // Install Zoom
-    const cleanupZoom = installAxisWheelZoom(u);
+    // Install Interactions (Pan, Zoom, Reset)
+    const cleanup = installInteractions(u, data);
 
     return () => {
-      cleanupZoom();
+      cleanup();
       if (plotRef.current) {
         plotRef.current.destroy();
         plotRef.current = null;
@@ -309,7 +405,7 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
       <div className="h-96 w-full bg-neutral-950 rounded-lg border border-neutral-800 p-4" ref={containerRef} />
       <div className="mt-2 text-xs text-neutral-400 flex items-center gap-2">
         <span className="font-semibold">💡 Tip:</span>
-        <span>Drag horizontally to zoom • Double-click to reset zoom • Wheel to zoom X • Shift+Wheel to zoom Y</span>
+        <span>Drag to pan • Wheel to zoom X (Shift+Wheel for Y) • Double-click to reset</span>
       </div>
     </div>
   );
