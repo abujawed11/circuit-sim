@@ -357,6 +357,7 @@ export default function Editor() {
                     { kind: ANALOG_KIND.C, label: ANALOG_PART_DEFS[ANALOG_KIND.C].label, short: "C", hint: ANALOG_PART_DEFS[ANALOG_KIND.C].defaultValue },
                     { kind: ANALOG_KIND.L, label: ANALOG_PART_DEFS[ANALOG_KIND.L].label, short: "L", hint: ANALOG_PART_DEFS[ANALOG_KIND.L].defaultValue },
                     { kind: ANALOG_KIND.VDC, label: "VDC", short: "V", hint: ANALOG_PART_DEFS[ANALOG_KIND.VDC].defaultValue },
+                    { kind: ANALOG_KIND.VAC, label: "VAC", short: "AC", hint: ANALOG_PART_DEFS[ANALOG_KIND.VAC].defaultValue },
                     { kind: ANALOG_KIND.VOLTMETER, label: ANALOG_PART_DEFS[ANALOG_KIND.VOLTMETER].label, short: "VM", hint: "Measure V across nodes" },
                     { kind: ANALOG_KIND.AMMETER, label: ANALOG_PART_DEFS[ANALOG_KIND.AMMETER].label, short: "AM", hint: "Measure I in series" },
                     { kind: ANALOG_KIND.GND, label: "GND", short: "0", hint: "Node 0" },

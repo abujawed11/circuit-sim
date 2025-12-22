@@ -159,13 +159,19 @@ export const makeAnalogComponent = (kind, x = 120, y = 120, existingComponents =
   const ref = kind === ANALOG_KIND.GND ? "GND" : nextRef(def.refPrefix);
   const { w, h } = def.size;
 
-  const pins = (() => {
-    if (kind === ANALOG_KIND.VDC) {
-      return [
-        makePin("+", { x: 0, y: -h / 2 }),
-        makePin("-", { x: 0, y: h / 2 }),
-      ];
-    }
+    const pins = (() => {
+
+      if (kind === ANALOG_KIND.VDC || kind === ANALOG_KIND.VAC) {
+
+        return [
+
+          makePin("+", { x: 0, y: -h / 2 }),
+
+          makePin("-", { x: 0, y: h / 2 }),
+
+        ];
+
+      }
     if (kind === ANALOG_KIND.VOLTMETER) {
       return [
         makePin("+", { x: -w / 2, y: 0 }),

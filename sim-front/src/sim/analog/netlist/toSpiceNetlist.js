@@ -146,6 +146,17 @@ export function toSpiceNetlist({
       continue;
     }
 
+    if (c.kind === ANALOG_KIND.VAC) {
+      const pPlus = pins[0]?.id;
+      const pMinus = pins[1]?.id;
+      const nPlus = pPlus ? nodeOf(pinToNode, pPlus) : `nc_${ref}_p`;
+      const nMinus = pMinus ? nodeOf(pinToNode, pMinus) : SPICE_GROUND_NODE;
+      lines.push(`${ref} ${nPlus} ${nMinus} ${value}`);
+      emittedElements.push(ref);
+      markUsedNodes(nPlus, nMinus);
+      continue;
+    }
+
     if (c.kind === ANALOG_KIND.AMMETER) {
       // Emit an ideal 0V voltage source so ngspice can report branch current through it.
       const p1 = pins[0]?.id;
