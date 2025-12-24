@@ -55,17 +55,17 @@ export default function AnalogResultsPanel({ result, onClose }) {
   if (!result) return null;
 
   return (
-    <div className="absolute top-16 right-4 w-96 max-h-[80vh] bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
+    <div className="absolute top-16 right-4 w-96 max-h-[80vh] bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl flex flex-col z-50 overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-neutral-800 bg-neutral-950">
-        <h3 className="font-semibold text-neutral-200">Analog Simulation</h3>
+      <div className="flex items-center justify-between p-3 border-b border-zinc-800 bg-zinc-950">
+        <h3 className="font-semibold text-zinc-200">Analog Simulation</h3>
         <button onClick={onClose} className="text-neutral-400 hover:text-white">✕</button>
       </div>
 
       <div className="p-4 overflow-auto flex-1 space-y-4">
         {/* Status */}
         <div className="flex items-center gap-2 text-sm">
-          Status: 
+          Status:
           <span className={ok ? "text-green-400" : "text-red-400 font-bold"}>
             {ok ? "OK" : "Failed"}
           </span>
@@ -100,14 +100,14 @@ export default function AnalogResultsPanel({ result, onClose }) {
                     <div className="text-xs text-neutral-400 mb-1">Voltmeters</div>
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
-                        <tr className="border-b border-neutral-700 text-neutral-500">
+                        <tr className="border-b border-zinc-700 text-neutral-500">
                           <th className="py-1">Ref</th>
                           <th className="py-1">V (V)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {meters.voltmeters.map(({ ref, voltage }, i) => (
-                          <tr key={`${ref || "VM"}_${i}`} className="border-b border-neutral-800 font-mono text-neutral-300">
+                          <tr key={`${ref || "VM"}_${i}`} className="border-b border-zinc-800 font-mono text-neutral-300">
                             <td className="py-1">{ref || "VM"}</td>
                             <td className="py-1">{typeof voltage === "number" ? voltage.toFixed(4) : "—"}</td>
                           </tr>
@@ -122,14 +122,14 @@ export default function AnalogResultsPanel({ result, onClose }) {
                     <div className="text-xs text-neutral-400 mb-1">Ammeters</div>
                     <table className="w-full text-xs text-left border-collapse">
                       <thead>
-                        <tr className="border-b border-neutral-700 text-neutral-500">
+                        <tr className="border-b border-zinc-700 text-neutral-500">
                           <th className="py-1">Ref</th>
                           <th className="py-1">I (A)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {meters.ammeters.map(({ ref, current }, i) => (
-                          <tr key={`${ref || "VA"}_${i}`} className="border-b border-neutral-800 font-mono text-neutral-300">
+                          <tr key={`${ref || "VA"}_${i}`} className="border-b border-zinc-800 font-mono text-neutral-300">
                             <td className="py-1">{ref || "VA"}</td>
                             <td className="py-1">{typeof current === "number" ? current.toExponential(4) : "—"}</td>
                           </tr>
@@ -147,14 +147,14 @@ export default function AnalogResultsPanel({ result, onClose }) {
                 <div className="font-semibold text-neutral-300 text-xs mb-2">Node Voltages (DC)</div>
                 <table className="w-full text-xs text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-neutral-700 text-neutral-500">
+                    <tr className="border-b border-zinc-700 text-neutral-500">
                       <th className="py-1">Node</th>
                       <th className="py-1">Voltage (V)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {results.dc.nodeVoltages.map(({ node, voltage }) => (
-                      <tr key={node} className="border-b border-neutral-800 font-mono text-neutral-300">
+                      <tr key={node} className="border-b border-zinc-800 font-mono text-neutral-300">
                         <td className="py-1">{node}</td>
                         <td className="py-1">{typeof voltage === 'number' ? voltage.toFixed(4) : voltage}</td>
                       </tr>
@@ -173,14 +173,14 @@ export default function AnalogResultsPanel({ result, onClose }) {
                 </div>
                 <table className="w-full text-xs text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-neutral-700 text-neutral-500">
+                    <tr className="border-b border-zinc-700 text-neutral-500">
                       <th className="py-1">Element</th>
                       <th className="py-1">Current (A)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {results.dc.elementCurrents.map(({ element, current }) => (
-                      <tr key={element} className="border-b border-neutral-800 font-mono text-neutral-300">
+                      <tr key={element} className="border-b border-zinc-800 font-mono text-neutral-300">
                         <td className="py-1">{element}</td>
                         <td className="py-1">{typeof current === 'number' ? current.toExponential(4) : current}</td>
                       </tr>
@@ -220,7 +220,7 @@ export default function AnalogResultsPanel({ result, onClose }) {
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left border-collapse whitespace-nowrap">
                 <thead>
-                  <tr className="border-b border-neutral-700 text-neutral-500">
+                  <tr className="border-b border-zinc-700 text-neutral-500">
                     <th className="py-1 px-2">Time (s)</th>
                     {(() => {
                       const names = Array.isArray(results.tran.series)
@@ -236,7 +236,7 @@ export default function AnalogResultsPanel({ result, onClose }) {
                 </thead>
                 <tbody>
                   {(results.tran.time || results.tran.x || []).slice(0, 20).map((t, i) => (
-                    <tr key={i} className="border-b border-neutral-800 font-mono text-neutral-300">
+                    <tr key={i} className="border-b border-zinc-800 font-mono text-neutral-300">
                       <td className="py-1 px-2">{t.toExponential(3)}</td>
                       {(() => {
                         if (Array.isArray(results.tran.series)) {
@@ -258,9 +258,9 @@ export default function AnalogResultsPanel({ result, onClose }) {
                 </tbody>
               </table>
               {((results.tran.time || results.tran.x || []).length > 20) && (
-                  <div className="text-xs text-neutral-500 mt-1 italic">
-                      ... {(results.tran.time || results.tran.x || []).length - 20} more rows
-                  </div>
+                <div className="text-xs text-neutral-500 mt-1 italic">
+                  ... {(results.tran.time || results.tran.x || []).length - 20} more rows
+                </div>
               )}
             </div>
 
@@ -270,21 +270,21 @@ export default function AnalogResultsPanel({ result, onClose }) {
                 <div className="mt-2 text-neutral-500">Run transient analysis to see plot.</div>
               ) : (
                 <div className="mt-2 space-y-3">
-                  <div className="max-h-28 overflow-auto border border-neutral-800 rounded p-2 bg-black/30">
+                  <div className="max-h-28 overflow-auto border border-zinc-800 rounded p-2 bg-black/30">
                     <div className="text-[11px] text-neutral-500 mb-1">Traces</div>
                     <div className="grid grid-cols-1 gap-1">
                       {availableTraceNames.map((name) => (
                         <label key={name} className="flex items-center gap-2 text-[11px]">
                           <input
                             type="checkbox"
-                          checked={effectiveSelectedTraceNames.includes(name)}
-                          onChange={() => toggleTrace(name)}
-                        />
-                        <span className="font-mono text-neutral-200">{name}</span>
-                      </label>
-                    ))}
+                            checked={effectiveSelectedTraceNames.includes(name)}
+                            onChange={() => toggleTrace(name)}
+                          />
+                          <span className="font-mono text-zinc-200">{name}</span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
                   <TransientPlot x={tranData.x} series={tranData.series} selectedNames={effectiveSelectedTraceNames} />
                 </div>
               )}
@@ -295,18 +295,18 @@ export default function AnalogResultsPanel({ result, onClose }) {
         {/* Netlist Preview (Collapsible) */}
         <details className="text-xs text-neutral-400">
           <summary className="cursor-pointer hover:text-neutral-300">Show Netlist</summary>
-          <pre className="mt-2 p-2 bg-black rounded border border-neutral-800 overflow-x-auto text-[10px] leading-tight">
+          <pre className="mt-2 p-2 bg-black rounded border border-zinc-800 overflow-x-auto text-[10px] leading-tight">
             {netlist}
           </pre>
         </details>
-        
+
         {results?.raw && (
-             <details className="text-xs text-neutral-400">
-              <summary className="cursor-pointer hover:text-neutral-300">Show Raw Output</summary>
-              <pre className="mt-2 p-2 bg-black rounded border border-neutral-800 overflow-x-auto text-[10px] leading-tight">
-                {results.raw}
-              </pre>
-            </details>
+          <details className="text-xs text-neutral-400">
+            <summary className="cursor-pointer hover:text-neutral-300">Show Raw Output</summary>
+            <pre className="mt-2 p-2 bg-black rounded border border-zinc-800 overflow-x-auto text-[10px] leading-tight">
+              {results.raw}
+            </pre>
+          </details>
         )}
 
       </div>
