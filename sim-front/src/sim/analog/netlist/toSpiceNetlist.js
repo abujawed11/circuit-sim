@@ -91,6 +91,7 @@ export function toSpiceNetlist({
 
   const emittedElements = [];
   const usedNodes = new Set();
+  const semiconductorCurrentProbes = new Map(); // compId -> probe voltage source ref
 
   const markUsedNodes = (...nodes) => {
     for (const n of nodes) {
@@ -178,35 +179,61 @@ export function toSpiceNetlist({
     }
 
     if (c.kind === ANALOG_KIND.D || c.kind === ANALOG_KIND.LED) {
-      // Diode: D<ref> <anode> <cathode> <model>
+      // Diode with current probe: Insert a 0V voltage source in series to measure current
+      // D<ref> <anode> <internal_node> <model>
+      // V<ref>_probe <internal_node> <cathode> DC 0
       const pAnode = pins.find(p => p.name === "A")?.id || pins[0]?.id;
       const pCathode = pins.find(p => p.name === "K")?.id || pins[1]?.id;
       const nAnode = pAnode ? nodeOf(pinToNode, pAnode) : `nc_${ref}_a`;
       const nCathode = pCathode ? nodeOf(pinToNode, pCathode) : `nc_${ref}_k`;
 
+      // Create internal node for current measurement
+      const nInternal = `${ref}_int`;
+
       // Use value as model name (e.g., "D1N4148" or "D_LED")
       const modelName = value || (c.kind === ANALOG_KIND.LED ? "D_LED" : "D1N4148");
-      lines.push(`${ref} ${nAnode} ${nCathode} ${modelName}`);
-      emittedElements.push(ref);
-      markUsedNodes(nAnode, nCathode);
+
+      // Emit diode from anode to internal node
+      lines.push(`${ref} ${nAnode} ${nInternal} ${modelName}`);
+
+      // Emit 0V probe from internal node to cathode
+      const probeRef = `V${ref}_probe`;
+      lines.push(`${probeRef} ${nInternal} ${nCathode} DC 0`);
+
+      emittedElements.push(ref, probeRef);
+      semiconductorCurrentProbes.set(c.id, probeRef);
+      markUsedNodes(nAnode, nCathode, nInternal);
       continue;
     }
 
     if (c.kind === ANALOG_KIND.NPN || c.kind === ANALOG_KIND.PNP) {
-      // BJT: Q<ref> <collector> <base> <emitter> <model>
+      // BJT with current probe: Insert a 0V voltage source in series with collector to measure current
+      // V<ref>_probe <collector_external> <collector_internal> DC 0
+      // Q<ref> <collector_internal> <base> <emitter> <model>
       const pCollector = pins.find(p => p.name === "C")?.id || pins[0]?.id;
       const pBase = pins.find(p => p.name === "B")?.id || pins[1]?.id;
       const pEmitter = pins.find(p => p.name === "E")?.id || pins[2]?.id;
 
-      const nC = pCollector ? nodeOf(pinToNode, pCollector) : `nc_${ref}_c`;
+      const nCexternal = pCollector ? nodeOf(pinToNode, pCollector) : `nc_${ref}_c`;
       const nB = pBase ? nodeOf(pinToNode, pBase) : `nc_${ref}_b`;
       const nE = pEmitter ? nodeOf(pinToNode, pEmitter) : `nc_${ref}_e`;
 
+      // Create internal collector node for current measurement
+      const nCinternal = `${ref}_c_int`;
+
       // Use value as model name (e.g., "2N2222" or "2N2907")
       const modelName = value || (c.kind === ANALOG_KIND.NPN ? "2N2222" : "2N2907");
-      lines.push(`${ref} ${nC} ${nB} ${nE} ${modelName}`);
-      emittedElements.push(ref);
-      markUsedNodes(nC, nB, nE);
+
+      // Emit 0V probe in series with collector
+      const probeRef = `V${ref}_probe`;
+      lines.push(`${probeRef} ${nCexternal} ${nCinternal} DC 0`);
+
+      // Emit BJT with internal collector node
+      lines.push(`${ref} ${nCinternal} ${nB} ${nE} ${modelName}`);
+
+      emittedElements.push(probeRef, ref);
+      semiconductorCurrentProbes.set(c.id, probeRef);
+      markUsedNodes(nCexternal, nB, nE, nCinternal);
       continue;
     }
 
@@ -420,6 +447,15 @@ export function toSpiceNetlist({
     lines.push("Rout 1 out 75");
     lines.push("Cout out 0 10p");
     lines.push(".ends");
+  }
+
+  // Add mapping comments for semiconductor current probes
+  // Format: * PROBE_MAP: compId=probeRef
+  if (semiconductorCurrentProbes.size > 0) {
+    lines.push("* Semiconductor current probe mapping:");
+    for (const [compId, probeRef] of semiconductorCurrentProbes.entries()) {
+      lines.push(`* PROBE_MAP: ${compId}=${probeRef}`);
+    }
   }
 
   lines.push(".end");

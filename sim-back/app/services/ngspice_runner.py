@@ -42,6 +42,26 @@ def _find_ngspice_executable() -> str | None:
 
 
 
+def _extract_probe_mapping(netlist: str) -> Dict[str, str]:
+    """
+    Extract semiconductor current probe mapping from netlist comments.
+
+    Format: * PROBE_MAP: compId=probeRef
+    Returns: {compId: probeRef, ...}
+    """
+    probe_map = {}
+    for line in netlist.split('\n'):
+        if line.strip().startswith('* PROBE_MAP:'):
+            # Extract compId=probeRef
+            parts = line.split(':', 1)
+            if len(parts) == 2:
+                mapping = parts[1].strip()
+                if '=' in mapping:
+                    comp_id, probe_ref = mapping.split('=', 1)
+                    probe_map[probe_ref.strip()] = comp_id.strip()
+    return probe_map
+
+
 def _extract_wrdata_vars(netlist: str) -> Tuple[Optional[str], List[str]]:
     """
     Extract WRDATA output filename and variables from netlist.
@@ -305,6 +325,8 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
     warnings: List[str] = []
 
     out_file, var_names = _extract_wrdata_vars(netlist)
+    probe_map = _extract_probe_mapping(netlist)  # probeRef -> compId
+
     if not out_file:
         return {
             "ok": False,
@@ -344,8 +366,19 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
                 if step > 1:
                     warnings.append(f"Transient results downsampled by {step}x for plotting.")
 
-                series_list = [{"name": name, "y": ys[i]} for i, name in enumerate(series_names)]
-                series_map = {name: ys[i] for i, name in enumerate(series_names)}
+                # Map probe references back to component IDs for semiconductors
+                def clean_signal_name(name):
+                    """Clean signal name and map probes to component IDs."""
+                    # Extract element name from @element[i] format
+                    if name.startswith("@") and name.endswith("[i]"):
+                        elem_name = name[1:-3].upper()
+                        # Check if this is a probe - map to original component ID
+                        if elem_name in probe_map:
+                            return f"@{probe_map[elem_name].lower()}[i]"
+                    return name
+
+                series_list = [{"name": clean_signal_name(name), "y": ys[i]} for i, name in enumerate(series_names)]
+                series_map = {clean_signal_name(name): ys[i] for i, name in enumerate(series_names)}
 
                 return {
                     "ok": True,
@@ -627,7 +660,7 @@ def _parse_ac_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[str,
 def _parse_op_wrdata_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[str, Any]:
     """
     Parse node voltages and currents from 'wrdata' CSV output for DC (.op).
-    
+
     Returns structured JSON:
       {
         "nodeVoltages": [{"node": "n1", "voltage": 5.0}, ...],
@@ -635,6 +668,8 @@ def _parse_op_wrdata_results(temp_dir: str, raw_output: str, netlist: str) -> Di
       }
     """
     out_file, var_names = _extract_wrdata_vars(netlist)
+    probe_map = _extract_probe_mapping(netlist)  # probeRef -> compId
+
     if not out_file:
          return {
             "ok": False,
@@ -694,7 +729,7 @@ def _parse_op_wrdata_results(temp_dir: str, raw_output: str, netlist: str) -> Di
             # Clean name logic
             clean_name = name
             is_current = False
-            
+
             # Remove v() or i() wrapper
             if name.lower().startswith("v(") and name.endswith(")"):
                 clean_name = name[2:-1]
@@ -704,9 +739,15 @@ def _parse_op_wrdata_results(temp_dir: str, raw_output: str, netlist: str) -> Di
             elif name.startswith("@") and name.endswith("[i]"):
                 clean_name = name[1:-3].upper()
                 is_current = True
-            
+
             if is_current:
-                element_currents.append({"element": clean_name, "current": val})
+                # Check if this is a semiconductor probe - map back to original component ID
+                if clean_name in probe_map:
+                    # This is a probe voltage source, use the original component ID
+                    original_comp_id = probe_map[clean_name]
+                    element_currents.append({"element": original_comp_id, "current": val})
+                else:
+                    element_currents.append({"element": clean_name, "current": val})
             else:
                 node_voltages.append({"node": clean_name, "voltage": val})
 

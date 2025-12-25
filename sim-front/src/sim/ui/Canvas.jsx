@@ -210,6 +210,7 @@ export default function Canvas({
   animationEnabled = true,
   animationSpeed = 1.0,
   showValuesOnCanvas = true,
+  valueDisplayMode = "voltages", // "voltages" | "currents" | "both"
 }) {
   const ref = useRef(null);
   const particleSystemRef = useRef(null);
@@ -826,63 +827,34 @@ export default function Canvas({
         }
       }
 
-      // Draw voltage labels at node positions
-      for (const [nodeName, pos] of nodePositions.entries()) {
-        const voltage = nodeVoltages[nodeName];
-        if (voltage !== undefined && voltage !== null) {
-          const label = `${nodeName}: ${formatVoltage(voltage)}`;
-          drawLabel(label, pos.x, pos.y - 25, "rgba(0, 50, 100, 0.9)", "#60A5FA");
-        }
-      }
-
-      // 2. Draw current labels on wires
-      for (const wire of circuit.wires || []) {
-        const from = findPinPos(circuit, wire.fromPinId);
-        const to = findPinPos(circuit, wire.toPinId);
-        if (!from || !to) continue;
-
-        // Find component at either end to get current
-        const fromMeta = getPinMeta(wire.fromPinId);
-        const toMeta = getPinMeta(wire.toPinId);
-
-        let current = null;
-        let compRef = null;
-
-        if (fromMeta && fromMeta.comp && currents[fromMeta.comp.id] !== undefined) {
-          current = currents[fromMeta.comp.id];
-          compRef = fromMeta.comp.ref;
-        } else if (toMeta && toMeta.comp && currents[toMeta.comp.id] !== undefined) {
-          current = currents[toMeta.comp.id];
-          compRef = toMeta.comp.ref;
-        }
-
-        if (current !== null && Math.abs(current) > 1e-9) {
-          // Calculate midpoint of wire
-          const pts = buildWirePolyline(from, to, wire.points);
-          if (pts.length >= 2) {
-            const midIndex = Math.floor(pts.length / 2);
-            const midPoint = pts[midIndex];
-
-            // Draw current label with arrow
-            const arrow = current > 0 ? "→" : "←";
-            const label = `${arrow} ${formatCurrent(Math.abs(current))}`;
-            drawLabel(label, midPoint.x, midPoint.y - 12, "rgba(50, 30, 0, 0.9)", "#FFD700");
+      // Draw voltage labels at node positions (only if mode includes voltages)
+      if (valueDisplayMode === "voltages" || valueDisplayMode === "both") {
+        for (const [nodeName, pos] of nodePositions.entries()) {
+          const voltage = nodeVoltages[nodeName];
+          if (voltage !== undefined && voltage !== null) {
+            const label = `${nodeName}: ${formatVoltage(voltage)}`;
+            drawLabel(label, pos.x, pos.y - 25, "rgba(0, 50, 100, 0.9)", "#60A5FA");
           }
         }
       }
 
-      // 3. Draw component current labels
-      for (const c of circuit.components || []) {
-        if (!c || c.domain !== ANALOG_DOMAIN) continue;
-        if (c.kind === ANALOG_KIND.GND || c.kind === ANALOG_KIND.VOLTMETER) continue;
+      // Draw current labels (only if mode includes currents)
+      // Show ONLY component currents to avoid duplication
+      if (valueDisplayMode === "currents" || valueDisplayMode === "both") {
+        for (const c of circuit.components || []) {
+          if (!c || c.domain !== ANALOG_DOMAIN) continue;
+          if (c.kind === ANALOG_KIND.GND || c.kind === ANALOG_KIND.VOLTMETER) continue;
 
-        const current = currents[c.id];
-        if (current !== undefined && current !== null && Math.abs(current) > 1e-9) {
-          const cx = c.x + c.w / 2;
-          const cy = c.y + c.h / 2;
+          const current = currents[c.id];
+          if (current !== undefined && current !== null && Math.abs(current) > 1e-9) {
+            const cx = c.x + c.w / 2;
+            const cy = c.y + c.h / 2;
 
-          const label = `${c.ref}: ${formatCurrent(Math.abs(current))}`;
-          drawLabel(label, cx, c.y - 20, "rgba(100, 50, 0, 0.9)", "#FFA500");
+            // Show with arrow indicating direction
+            const arrow = current > 0 ? "→" : "←";
+            const label = `${arrow} ${formatCurrent(Math.abs(current))}`;
+            drawLabel(label, cx, c.y - 20, "rgba(100, 50, 0, 0.9)", "#FFA500");
+          }
         }
       }
     }

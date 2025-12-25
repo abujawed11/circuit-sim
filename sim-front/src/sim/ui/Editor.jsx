@@ -188,6 +188,7 @@ export default function Editor() {
 
     // Canvas value display
     const [showValuesOnCanvas, setShowValuesOnCanvas] = useState(true);
+    const [valueDisplayMode, setValueDisplayMode] = useState("voltages"); // "voltages" | "currents" | "both"
 
     // Playback loop - use ref to avoid dependency issues
     const playbackStateRef = React.useRef(playbackState);
@@ -2054,18 +2055,56 @@ export default function Editor() {
                             )}
 
                             {/* Show Values on Canvas Toggle */}
-                            <div className="flex items-center justify-between pt-3 mt-3 border-t border-neutral-700">
-                                <label className="text-[10px] text-neutral-400 font-semibold">SHOW VALUES</label>
-                                <button
-                                    onClick={() => setShowValuesOnCanvas(!showValuesOnCanvas)}
-                                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
-                                        showValuesOnCanvas
-                                            ? "bg-blue-600/20 text-blue-400 border border-blue-600/40"
-                                            : "bg-neutral-800 text-neutral-500 border border-neutral-700"
-                                    }`}
-                                >
-                                    {showValuesOnCanvas ? "ON" : "OFF"}
-                                </button>
+                            <div className="pt-3 mt-3 border-t border-neutral-700">
+                                <div className="flex items-center justify-between mb-2">
+                                    <label className="text-[10px] text-neutral-400 font-semibold">SHOW VALUES</label>
+                                    <button
+                                        onClick={() => setShowValuesOnCanvas(!showValuesOnCanvas)}
+                                        className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                                            showValuesOnCanvas
+                                                ? "bg-blue-600/20 text-blue-400 border border-blue-600/40"
+                                                : "bg-neutral-800 text-neutral-500 border border-neutral-700"
+                                        }`}
+                                    >
+                                        {showValuesOnCanvas ? "ON" : "OFF"}
+                                    </button>
+                                </div>
+
+                                {/* Display Mode Filters */}
+                                {showValuesOnCanvas && (
+                                    <div className="flex gap-1">
+                                        <button
+                                            onClick={() => setValueDisplayMode("voltages")}
+                                            className={`flex-1 text-[9px] px-2 py-1 rounded transition-colors ${
+                                                valueDisplayMode === "voltages"
+                                                    ? "bg-blue-600 text-white font-semibold"
+                                                    : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+                                            }`}
+                                        >
+                                            V
+                                        </button>
+                                        <button
+                                            onClick={() => setValueDisplayMode("currents")}
+                                            className={`flex-1 text-[9px] px-2 py-1 rounded transition-colors ${
+                                                valueDisplayMode === "currents"
+                                                    ? "bg-yellow-600 text-black font-semibold"
+                                                    : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+                                            }`}
+                                        >
+                                            I
+                                        </button>
+                                        <button
+                                            onClick={() => setValueDisplayMode("both")}
+                                            className={`flex-1 text-[9px] px-2 py-1 rounded transition-colors ${
+                                                valueDisplayMode === "both"
+                                                    ? "bg-purple-600 text-white font-semibold"
+                                                    : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700"
+                                            }`}
+                                        >
+                                            Both
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -2232,6 +2271,7 @@ export default function Editor() {
                     animationEnabled={animationEnabled}
                     animationSpeed={animationSpeed}
                     showValuesOnCanvas={showValuesOnCanvas}
+                    valueDisplayMode={valueDisplayMode}
                     onPlace={addAt}
                     onAddJunction={onAddJunction}
                     onAddJunctionAndConnect={onAddJunctionAndConnect}
