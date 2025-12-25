@@ -211,11 +211,18 @@ export default function Canvas({
 }) {
   const ref = useRef(null);
   const particleSystemRef = useRef(null);
+  const drawRef = useRef(null);
+  const animationEnabledRef = useRef(animationEnabled);
+  const animationSpeedRef = useRef(animationSpeed);
 
   // Initialize particle system once
   if (!particleSystemRef.current) {
     particleSystemRef.current = new ParticleSystem();
   }
+
+  // Keep animation controls current for the rAF loop.
+  animationEnabledRef.current = animationEnabled;
+  animationSpeedRef.current = animationSpeed;
 
   // Draft wire:
   // fromPinId: starting output pin
@@ -290,16 +297,24 @@ export default function Canvas({
   }, [selectedCompIds, selectedWireIds, selectedCompId, selectedWireId]);
 
 
-  // Monotonic time for animation
-  const [animTime, setAnimTime] = useState(0);
-
-  // Animation loop
+  // Animation loop (particles + redraw) without triggering React re-renders.
   React.useEffect(() => {
     let animId;
-    const loop = () => {
-      setAnimTime((t) => t + 1);
+    let last = performance.now();
+
+    const loop = (now) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      if (animationEnabledRef.current) {
+        const speed = animationSpeedRef.current || 1.0;
+        particleSystemRef.current?.update(dt * speed);
+        drawRef.current?.();
+      }
+
       animId = requestAnimationFrame(loop);
     };
+
     animId = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animId);
   }, []);
@@ -397,7 +412,11 @@ export default function Canvas({
     const pinToNode =
       simulationData.nodes.pinToNodeAll || simulationData.nodes.pinToNode || {};
     const nodeVoltages = simulationData.nodeVoltages || {};
-    const currentsByCompId = simulationData.currents || {};
+    
+    // Instantaneous currents (for velocity)
+    const instCurrentsByCompId = simulationData.currents || {};
+    // Peak/Max currents (for density/connectivity graph)
+    const peakCurrentsByCompId = simulationData.nodeMaxCurrents || instCurrentsByCompId;
 
     const adj = new Map();
     const addEdge = (a, b) => {
@@ -433,44 +452,49 @@ export default function Canvas({
       return null;
     };
 
-    // Map node -> representative current magnitude (for visibility).
-    const nodeMaxAbsCurrent = {};
+    const propagateCurrents = (currentsMap) => {
+        const nodeAbsI = {};
+        const sources = new Set();
+        const I_EPS = 1e-9;
 
-    // "Source" pins seed BFS so current animates through junction-only segments.
-    const sourcePins = new Set();
+        for (const c of circuit.components || []) {
+            if (c?.domain !== ANALOG_DOMAIN) continue;
+            const i = currentsMap[c.id];
+            if (typeof i !== "number" || Math.abs(i) <= I_EPS) continue;
+            
+            const pins = orderedPinsForCurrent(c);
+            if (!pins || pins.length < 2) continue;
 
-    const I_EPS = 1e-9;
-    for (const c of circuit.components || []) {
-      if (c?.domain !== ANALOG_DOMAIN) continue;
+            const a = pins[0];
+            const b = pins[1];
+            const na = pinToNode[a];
+            const nb = pinToNode[b];
+            if (!na || !nb) continue;
 
-      const i = currentsByCompId[c.id];
-      if (typeof i !== "number" || Math.abs(i) <= I_EPS) continue;
+            const absI = Math.abs(i);
+            nodeAbsI[na] = Math.max(nodeAbsI[na] || 0, absI);
+            nodeAbsI[nb] = Math.max(nodeAbsI[nb] || 0, absI);
+            if (na === nb) continue;
 
-      const pins = orderedPinsForCurrent(c);
-      if (!pins || pins.length < 2) continue;
+            // Direction for BFS seeding (positive current flows into b, or out of a?)
+            // Ngspice: positive current flows a -> b.
+            // So current emerges at b.
+            const outPinId = i > 0 ? b : a;
+            sources.add(outPinId);
+        }
+        return { nodeAbsI, sources };
+    };
 
-      const a = pins[0];
-      const b = pins[1];
-      const na = pinToNode[a];
-      const nb = pinToNode[b];
-      if (!na || !nb) continue;
+    // 1. Calculate Peak/Density Map (defines graph connectivity)
+    const { nodeAbsI: nodePeakCurrents, sources: peakSources } = propagateCurrents(peakCurrentsByCompId);
 
-      const absI = Math.abs(i);
-      nodeMaxAbsCurrent[na] = Math.max(nodeMaxAbsCurrent[na] || 0, absI);
-      nodeMaxAbsCurrent[nb] = Math.max(nodeMaxAbsCurrent[nb] || 0, absI);
-      if (na === nb) continue;
+    // 2. Calculate Instantaneous Map (defines velocity)
+    const { nodeAbsI: nodeInstCurrents } = propagateCurrents(instCurrentsByCompId);
 
-      // Ngspice @ref[i] follows element pin order:
-      // Positive current flows from pin[0] node -> pin[1] node.
-      // That means the current emerges into the net at pin[1] when i>0, and at pin[0] when i<0.
-      const outPinId = i > 0 ? b : a;
-      sourcePins.add(outPinId);
-    }
-
-    // Multi-source BFS distances from source pins.
+    // Multi-source BFS distances from peak sources (defines static flow direction)
     const dist = new Map();
     const q = [];
-    for (const p of sourcePins) {
+    for (const p of peakSources) {
       dist.set(p, 0);
       q.push(p);
     }
@@ -494,7 +518,7 @@ export default function Canvas({
       return typeof v === "number" ? v : null;
     };
 
-    return { pinToNode, nodeMaxAbsCurrent, dist, getNodeV };
+    return { pinToNode, nodePeakCurrents, nodeInstCurrents, dist, getNodeV };
   }, [simulationData, circuit.wires, circuit.components]);
 
   // Update particle system when simulation data or circuit changes
@@ -502,11 +526,11 @@ export default function Canvas({
     const ps = particleSystemRef.current;
     if (!ps) return;
 
-    // Clear all particles first
-    ps.clear();
-
     // Only create particles if we have simulation data
-    if (!simulationData || !circuit) return;
+    if (!simulationData || !circuit) {
+        ps.clear();
+        return;
+    }
 
     // Extract AC frequency from VAC components
     let acFrequency = 1000; // Default 1kHz
@@ -517,11 +541,9 @@ export default function Canvas({
         hasVAC = true;
         const value = c?.props?.value || "";
         // Parse SIN(offset amp freq delay damping) format
-        // Example: "SIN(0 5 1k)" -> frequency is 1k = 1000 Hz
         const sinMatch = value.match(/SIN\([^)]*\s+([\d.]+[kKmMuUnNpP]?)\)/i);
         if (sinMatch) {
           const freqStr = sinMatch[1];
-          // Parse engineering notation (1k = 1000, 1M = 1e6, etc.)
           const parseEngNotation = (str) => {
             const match = str.match(/([\d.]+)([kKmMuUnNpP]?)/);
             if (!match) return parseFloat(str);
@@ -536,45 +558,68 @@ export default function Canvas({
       }
     }
 
+    const isTransientPlayback = !!simulationData.nodeMaxCurrents;
+    const activeWireIds = new Set();
+
     // For each wire, configure particles based on current flow
     for (const wire of circuit.wires || []) {
       const flow = getWireFlow(wire);
 
-      if (flow && flow.active && Math.abs(flow.speed) > 0.001) {
-        // Calculate current magnitude (rough estimate from speed)
-        const current = Math.pow(10, (flow.speed - 0.9) / 0.25) - 1e-12;
+      if (flow && flow.active) {
+        const peakI = flow.peakI || 0;
+        const instI = flow.instI || 0;
 
-        // Set particle configuration for this wire
-        ps.setWireConfig(wire.id, current * flow.direction, hasVAC, acFrequency);
+        // Use PEAK current for filtering and density
+        if (peakI > 1e-9) {
+            // Use INSTANTANEOUS current for velocity
+            // flow.direction gives the static BFS direction, but for AC/Transient
+            // we should trust the sign of the instantaneous current/voltage difference if available.
+            
+            // Note: instI from propagateCurrents is ABSOLUTE.
+            // We need the signed instantaneous current to know direction relative to the wire.
+            // getWireFlow calculates direction based on Voltage or BFS.
+            
+            // If we have voltage data, flow.direction follows voltage gradient (High -> Low).
+            // So positive instI * flow.direction should be correct.
+            
+            // If isTransientPlayback, disable generic AC sine wave
+            const useAC = isTransientPlayback ? false : hasVAC;
+            
+            // Current for velocity: derived from instantaneous current magnitude
+            // We need to map Amps to Pixels/Frame.
+            // speedFromCurrent does a log mapping.
+            const speed = speedFromCurrent(instI); 
+            
+            ps.setWireConfig(wire.id, speed * flow.direction, useAC, acFrequency, peakI);
+            activeWireIds.add(wire.id);
+        }
       }
+    }
+    
+    // Cleanup stale wires (particles that should no longer exist)
+    // Accessing private 'particles' map is risky but ParticleSystem is in our control.
+    // Better to add a 'prune' method, but for now we iterate keys.
+    if (ps.particles) {
+        for (const wireId of ps.particles.keys()) {
+            if (!activeWireIds.has(wireId)) {
+                ps.clearWire(wireId);
+            }
+        }
     }
   }, [simulationData, circuit, analogFlowCtx]);
 
-  // Update particles every frame
-  React.useEffect(() => {
-    let lastTime = Date.now();
-    let animId;
-
-    const updateLoop = () => {
-      const now = Date.now();
-      const dt = (now - lastTime) / 1000; // Convert to seconds
-      lastTime = now;
-
-      if (particleSystemRef.current && animationEnabled) {
-        particleSystemRef.current.update(dt * animationSpeed);
-      }
-
-      animId = requestAnimationFrame(updateLoop);
-    };
-
-    animId = requestAnimationFrame(updateLoop);
-    return () => cancelAnimationFrame(animId);
-  }, [animationEnabled, animationSpeed]);
-
   const speedFromCurrent = (absI) => {
-    if (typeof absI !== "number" || absI <= 0) return 0.4;
+    if (typeof absI !== "number") return 0;
+    // Linear scale for small currents, log for large?
+    // We want visual feedback even for small currents.
+    // Threshold 1nA.
+    if (absI < 1e-9) return 0;
+    
     const log = Math.log10(absI + 1e-12);
-    return Math.max(0.25, Math.min(2.5, 0.9 + log * 0.25));
+    // Map 1uA (-6) to 0.5
+    // Map 1A (0) to 2.0
+    // range -9 to 1
+    return Math.max(0.1, Math.min(3.0, 2.0 + log * 0.25));
   };
 
   const getWireFlow = (wire) => {
@@ -582,32 +627,57 @@ export default function Canvas({
       const fromNode = analogFlowCtx.pinToNode[wire.fromPinId];
       const toNode = analogFlowCtx.pinToNode[wire.toPinId];
 
-      const absI = Math.max(
-        analogFlowCtx.nodeMaxAbsCurrent[fromNode] || 0,
-        analogFlowCtx.nodeMaxAbsCurrent[toNode] || 0
+      // Use PEAK current to determine if wire is active at all
+      const peakI = Math.max(
+        analogFlowCtx.nodePeakCurrents[fromNode] || 0,
+        analogFlowCtx.nodePeakCurrents[toNode] || 0
       );
 
-      if (absI > 1e-9) {
+      // Use INST current for velocity calculation
+      const instI = Math.max(
+        analogFlowCtx.nodeInstCurrents[fromNode] || 0,
+        analogFlowCtx.nodeInstCurrents[toNode] || 0
+      );
+
+      if (peakI > 1e-9) {
         let direction = 1;
 
+        // Determine direction:
+        // 1. Try Voltage Difference (Instantaneous) - most accurate for Transient
+        if (fromNode && toNode && fromNode !== toNode) {
+            const vFrom = analogFlowCtx.getNodeV(fromNode);
+            const vTo = analogFlowCtx.getNodeV(toNode);
+            if (typeof vFrom === "number" && typeof vTo === "number") {
+                if (Math.abs(vFrom - vTo) > 1e-9) {
+                    direction = vFrom > vTo ? 1 : -1;
+                    return { active: true, peakI, instI, direction };
+                }
+            }
+        }
+
+        // 2. Fallback to BFS Distance (Static)
         const dFrom = analogFlowCtx.dist.get(wire.fromPinId);
         const dTo = analogFlowCtx.dist.get(wire.toPinId);
         if (typeof dFrom === "number" && typeof dTo === "number" && dFrom !== dTo) {
           direction = dFrom < dTo ? 1 : -1;
-        } else if (fromNode && toNode && fromNode !== toNode) {
-          const vFrom = analogFlowCtx.getNodeV(fromNode);
-          const vTo = analogFlowCtx.getNodeV(toNode);
-          if (typeof vFrom === "number" && typeof vTo === "number" && Math.abs(vFrom - vTo) > 1e-9) {
-            direction = vFrom > vTo ? 1 : -1;
-          }
         }
 
-        return { active: true, speed: speedFromCurrent(absI), direction };
+        return { active: true, peakI, instI, direction };
       }
     }
 
     // Fall back to the existing digital (and legacy) behavior.
-    return getWireFlowLegacy(wire);
+    const legacy = getWireFlowLegacy(wire);
+    if (legacy) {
+        // Adapt legacy format
+        return { 
+            active: true, 
+            peakI: 0.01, // arbitrary
+            instI: 0.01, 
+            direction: legacy.direction 
+        };
+    }
+    return null;
   };
 
   const draw = () => {
@@ -1874,11 +1944,16 @@ export default function Canvas({
     }
   };
 
+  drawRef.current = draw;
+
   React.useEffect(() => {
-    draw();
-    const onResize = () => draw();
+    const onResize = () => drawRef.current?.();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  React.useEffect(() => {
+    draw();
   });
 
   const toLocal = (e) => {

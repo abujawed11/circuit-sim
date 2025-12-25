@@ -8,110 +8,77 @@ This document outlines the implementation of **EveryCircuit-style AC circuit sim
 
 ---
 
-## 🎯 Current Status: Phase 1 Complete
+## 🎯 Current Status: Phase 3 (Partial) Complete
 
-### ✅ Completed Features (Phase 1: Core Animation System)
+### ✅ Completed Features (Phase 1, 2, & 3 Partial)
 
-#### 1. **Particle System Architecture**
+#### Phase 1: Core Animation System
 **File**: `sim-front/src/sim/ui/ParticleSystem.js`
+- [x] Particle system architecture
+- [x] Canvas integration
+- [x] Basic animation controls
 
-- [x] `Particle` class for individual particle state
-  - Position tracking (0-1 along wire path)
-  - Velocity with sinusoidal oscillation for AC
-  - Random phase offsets for visual variety
-  - Path interpolation for smooth movement along polylines
+#### Phase 2: Real-Time Transient Simulation
+**Files**: `Editor.jsx`, `Canvas.jsx`, `ParticleSystem.js`
 
-- [x] `ParticleSystem` class for managing all particles
-  - Wire-based particle configuration
-  - Automatic particle count scaling based on current magnitude
-  - Logarithmic scaling: 1µA → 2 particles, 1mA → 5, 1A → 8, 10A → 12
-  - AC/DC detection and handling
-  - Frequency-aware animation for AC circuits
-  - Render method with glowing visual effects
+- [x] **Continuous transient playback**
+  - Simulation results stored in `playbackState`
+  - Playback loop updates `simulationData` at 60 FPS
+  - Interpolation of voltage/current between time steps
 
-**Features**:
-- Particles flow along wire paths (polylines with bend points)
-- **AC Mode**: Particles oscillate sinusoidally (velocity = baseVelocity × sin(ωt + φ))
-- **DC Mode**: Particles move at constant velocity
-- Current magnitude → particle density (more current = more particles)
-- Current direction → particle flow direction
-- Glowing visual effects (blue for AC, yellow/gold for DC)
+- [x] **Playback Controls UI**
+  - Play/Pause toggle
+  - Restart button
+  - Time scrubber (seek bar)
+  - Speed control (Time scaling)
 
-#### 2. **Canvas Integration**
-**File**: `sim-front/src/sim/ui/Canvas.jsx`
+- [x] **Accurate AC Motion**
+  - Particles driven by instantaneous transient current
+  - `ParticleSystem` decoupled density (peak) from velocity (instantaneous)
+  - True waveform visualization (sine, square, complex transients)
+  - Correct directionality based on instantaneous voltage difference
 
-- [x] Import and initialize `ParticleSystem`
-- [x] Update particle system on simulation data changes
-- [x] Extract AC frequency from VAC component values
-  - Parses `SIN(offset amp freq)` format
-  - Supports engineering notation (1k, 1M, 1u, etc.)
-  - Falls back to 1kHz default
-- [x] Build wire path maps for particle rendering
-- [x] Render particles every frame (60 FPS)
-- [x] Animation loop with delta time for smooth motion
-- [x] Respect animation enabled/speed settings
+#### Phase 3: Live Waveform Display (Partial)
+**Files**: `LiveWaveformGraph.jsx`, `Editor.jsx`
 
-**Key Implementation Details**:
-```javascript
-// Frequency extraction from VAC:
-// "SIN(0 5 1k)" → 1000 Hz
-const sinMatch = value.match(/SIN\([^)]*\s+([\d.]+[kKmMuUnNpP]?)\)/i);
+- [x] **Live Waveform Graph Component**
+  - Real-time waveform display (EveryCircuit style)
+  - Sweeping effect - shows waveform up to current playback time
+  - Auto-scaling based on signal amplitude
+  - Grid overlay with axes
+  - Color-coded traces (gold, blue, pink, etc.)
+  - Red vertical line shows current time position
+  - Legend with signal names
 
-// Particle configuration per wire:
-particleSystem.setWireConfig(wireId, current, isAC, frequency);
+- [x] **Integration & Controls**
+  - "Live" button in top-right (purple/yellow gradient)
+  - Auto-shows when transient simulation runs
+  - Toggleable show/hide
+  - Fixed position (bottom-right, 600x300px)
+  - Updates in real-time as playback progresses
 
-// Rendering:
-particleSystem.render(ctx, wirePaths);
-```
+- [x] **Fixed Infinite Loop Bug**
+  - Used `useRef` to avoid React re-render loops
+  - Removed problematic dependencies from playback effect
+  - Stable 60 FPS animation without crashes
 
-#### 3. **Animation Controls UI**
-**File**: `sim-front/src/sim/ui/Editor.jsx`
-
-- [x] State management for animation settings
-  - `animationEnabled` (boolean, default: true)
-  - `animationSpeed` (float, range: 0.1x - 3.0x, default: 1.0x)
-
-- [x] UI controls in left panel sidebar
-  - **ON/OFF toggle button** with visual feedback (green when on)
-  - **Speed slider** with live value display
-  - Disabled state when animation is off
-  - Styled to match existing UI theme
-
-- [x] Props passed to Canvas component
-  - `animationEnabled`
-  - `animationSpeed`
-
-**UI Layout**:
-```
-┌─────────────────────────┐
-│ Analog Analysis         │
-│ ├─ Analysis Type        │
-│ ├─ Parameters           │
-│ └─ [Run Analog]         │
-│                         │
-│ CURRENT ANIMATION       │
-│ ├─ [ON/OFF Toggle]      │
-│ └─ Speed: 1.0x ━━━━○━━  │
-└─────────────────────────┘
-```
-
-#### 4. **Build & Integration**
-- [x] No build errors
-- [x] Proper imports and dependencies
-- [x] React hooks properly configured
-- [x] Animation loop optimized (requestAnimationFrame)
-- [x] Memory management (cleanup on unmount)
+**Still TODO for Phase 3**:
+- [ ] Click-to-view waveform (click any component/wire)
+- [ ] Draggable waveform windows
+- [ ] Multi-channel oscilloscope
+- [ ] Trigger controls
+- [ ] Measurement tools (RMS, frequency, etc.)
 
 ---
 
-## 🚧 Remaining Features (Phase 2-4)
+## 🚧 Remaining Features (Phase 3-4)
 
-### Phase 2: Enhanced Transient Simulation
+### Phase 3: Interactive Waveform Viewing
 
 **Goal**: Provide continuous real-time animation for AC circuits (like EveryCircuit's live mode)
 
 #### 2.1 Real-Time Transient Loop
-**Status**: ❌ Not Started
+**Status**: ✅ Complete
 
 **Current Limitation**:
 - Simulation runs once when user clicks "Run Analog"
@@ -119,21 +86,21 @@ particleSystem.render(ctx, wirePaths);
 - Particles animate based on static current values
 
 **Needed**:
-- [ ] Continuous transient simulation loop
+- [x] Continuous transient simulation loop
   - Run transient with small time windows (e.g., 5-10 AC cycles)
   - Update at ~30 FPS (not 60 FPS to save CPU)
   - Stream time-series data to animation system
 
-- [ ] Time-stepped current updates
+- [x] Time-stepped current updates
   - Extract current values for each time step
   - Interpolate between steps for smooth 60 FPS animation
   - Synchronize particle phase with simulation time
 
-- [ ] Playback controls
-  - [ ] Play/Pause button
-  - [ ] Restart button
-  - [ ] Time scrubber (seek to any point in waveform)
-  - [ ] Loop mode toggle
+- [x] Playback controls
+  - [x] Play/Pause button
+  - [x] Restart button
+  - [x] Time scrubber (seek to any point in waveform)
+  - [x] Loop mode toggle
 
 **Files to Modify**:
 - `sim-front/src/sim/ui/Editor.jsx` - Add time-stepping logic
@@ -171,7 +138,7 @@ useEffect(() => {
 ```
 
 #### 2.2 Accurate AC Particle Motion
-**Status**: ❌ Not Started
+**Status**: ✅ Complete
 
 **Current Limitation**:
 - Particles use generic sinusoidal motion
@@ -179,17 +146,17 @@ useEffect(() => {
 - Phase relationships not accurate
 
 **Needed**:
-- [ ] Extract phase information from transient data
+- [x] Extract phase information from transient data
   - Parse voltage/current at each time step
   - Calculate instantaneous values
   - Determine flow direction based on sign
 
-- [ ] Synchronize particle velocity with waveform
+- [x] Synchronize particle velocity with waveform
   - Velocity ∝ instantaneous current
   - Direction based on current sign
   - Speed varies smoothly over time
 
-- [ ] Multi-frequency support
+- [x] Multi-frequency support
   - Handle circuits with multiple AC sources
   - Superposition of multiple frequencies
   - Beat patterns for non-harmonic sources

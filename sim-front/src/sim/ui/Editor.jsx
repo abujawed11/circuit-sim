@@ -8,6 +8,7 @@ import ICCreationDialog from "./ICCreationDialog";
 import PropertiesPanel from "./PropertiesPanel";
 import AnalogResultsPanel from "./AnalogResultsPanel";
 import GraphModal from "./GraphModal";
+import LiveWaveformGraph from "./LiveWaveformGraph";
 import { simulate } from "../engine/simulate";
 import { simulateAnalog } from "../analog/api/simulateAnalog";
 import { ANALOG_DOMAIN } from "../analog/model/analogTypes"; // "analog"
@@ -57,6 +58,94 @@ const saveCircuitToStorage = (circuit) => {
     }
 };
 
+// Helper to interpolate simulation data at a specific time
+const interpolateTransientData = (tran, time, compRefToId) => {
+    if (!tran || !tran.time || tran.time.length === 0) return null;
+
+    const times = tran.time;
+    // Find index i such that times[i] <= time < times[i+1]
+    let i = 0;
+    let low = 0, high = times.length - 1;
+    while (low <= high) {
+        const mid = (low + high) >>> 1;
+        if (times[mid] <= time) {
+            i = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+    // i is now the largest index <= time.
+    if (i >= times.length - 1) i = times.length - 2;
+    if (i < 0) i = 0;
+
+    const t1 = times[i];
+    const t2 = times[i + 1];
+    // prevent division by zero
+    const dt = t2 - t1;
+    const ratio = dt > 1e-15 ? (time - t1) / dt : 0;
+
+    const result = {
+        currents: {},
+        nodeVoltages: {}
+    };
+
+    const getValue = (values, idx, r) => {
+        if (!values) return 0;
+        const v1 = values[idx];
+        const v2 = values[idx + 1];
+        return v1 + (v2 - v1) * r;
+    };
+
+    // Extract series
+    if (Array.isArray(tran.series)) {
+        for (const s of tran.series) {
+            const val = getValue(s.y, i, ratio);
+            const name = s.name;
+
+            const mV = String(name).match(/^v\((.+)\)$/i);
+            if (mV) {
+                result.nodeVoltages[mV[1]] = val;
+                continue;
+            }
+
+            const mI = String(name).match(/^(?:@(.+)\[i\]|i\((.+)\))$/i);
+            if (mI) {
+                const ref = (mI[1] || mI[2]).toUpperCase();
+                const compId = compRefToId[ref];
+                if (compId) {
+                    result.currents[compId] = val;
+                }
+            }
+        }
+    }
+
+    return result;
+};
+
+// Helper to calculate max/peak currents for each component (for particle density)
+const calculateMaxCurrents = (tran, compRefToId) => {
+    const maxCurrents = {};
+    if (!tran || !Array.isArray(tran.series)) return maxCurrents;
+
+    for (const s of tran.series) {
+        const mI = String(s.name).match(/^(?:@(.+)\[i\]|i\((.+)\))$/i);
+        if (mI) {
+            const ref = (mI[1] || mI[2]).toUpperCase();
+            const compId = compRefToId[ref];
+            if (compId && s.y) {
+                let maxVal = 0;
+                for (const v of s.y) {
+                    const abs = Math.abs(v);
+                    if (abs > maxVal) maxVal = abs;
+                }
+                maxCurrents[compId] = maxVal;
+            }
+        }
+    }
+    return maxCurrents;
+};
+
 export default function Editor() {
     const [circuit, setCircuit] = useState(() => loadCircuitFromStorage());
     const [simTick, setSimTick] = useState(0);
@@ -79,10 +168,102 @@ export default function Editor() {
     const [isSimulating, setIsSimulating] = useState(false);
     const [simulationData, setSimulationData] = useState(null); // { currents: { compId: amps } }
     const [showGraphModal, setShowGraphModal] = useState(false);
+    const [showLiveGraph, setShowLiveGraph] = useState(false);
+
+    // Playback state for transient simulation
+    const [playbackState, setPlaybackState] = useState({
+        isPlaying: false,
+        endTime: 0,
+        tranData: null,
+        compRefToId: null,
+        nodeMaxCurrents: null,
+    });
+
+    // Separate state for current playback time (updated every frame)
+    const [playbackTime, setPlaybackTime] = useState(0);
 
     // Animation controls
     const [animationEnabled, setAnimationEnabled] = useState(true);
     const [animationSpeed, setAnimationSpeed] = useState(1.0);
+
+    // Playback loop - use ref to avoid dependency issues
+    const playbackStateRef = React.useRef(playbackState);
+    const playbackTimeRef = React.useRef(playbackTime);
+
+    React.useEffect(() => {
+        playbackStateRef.current = playbackState;
+    }, [playbackState]);
+
+    React.useEffect(() => {
+        playbackTimeRef.current = playbackTime;
+    }, [playbackTime]);
+
+    React.useEffect(() => {
+        if (!playbackState.isPlaying || !playbackState.tranData) return;
+
+        let lastTime = performance.now();
+        let animId;
+
+        const loop = (now) => {
+            const dt = (now - lastTime) / 1000; // Real seconds
+            lastTime = now;
+
+            const state = playbackStateRef.current;
+            const currentTime = playbackTimeRef.current;
+
+            // Advance playback time
+            const stopTime = state.endTime || 0.01;
+            const baseDuration = 5.0; // seconds to play full sim
+            const timeScale = stopTime / baseDuration;
+
+            let nextTime = currentTime + dt * timeScale * animationSpeed;
+            if (nextTime > state.endTime) {
+                nextTime = 0; // Loop
+            }
+
+            setPlaybackTime(nextTime);
+            animId = requestAnimationFrame(loop);
+        };
+
+        animId = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(animId);
+    }, [playbackState.isPlaying, animationSpeed]);
+
+    // Update simulationData based on playback time (with throttle to prevent excessive updates)
+    const lastUpdateRef = React.useRef(0);
+
+    React.useEffect(() => {
+        if (!playbackState.tranData || !playbackState.compRefToId) return;
+
+        // Throttle to 30 FPS instead of 60 FPS to reduce load
+        const now = performance.now();
+        if (now - lastUpdateRef.current < 33) return; // ~30 FPS
+        lastUpdateRef.current = now;
+
+        const interpolated = interpolateTransientData(
+            playbackState.tranData,
+            playbackTime,
+            playbackState.compRefToId
+        );
+
+        if (interpolated) {
+            setSimulationData(prev => {
+                // Only update if values actually changed
+                const changed =
+                    JSON.stringify(prev?.currents) !== JSON.stringify(interpolated.currents) ||
+                    JSON.stringify(prev?.nodeVoltages) !== JSON.stringify(interpolated.nodeVoltages);
+
+                if (!changed && prev) return prev; // Prevent unnecessary update
+
+                return {
+                    ...prev, // Keep static data like nodes
+                    currents: interpolated.currents,
+                    nodeVoltages: interpolated.nodeVoltages,
+                    nodeMaxCurrents: playbackState.nodeMaxCurrents,
+                };
+            });
+        }
+    }, [playbackTime, playbackState.tranData, playbackState.compRefToId, playbackState.nodeMaxCurrents]);
 
     const updateAnalogAnalysis = (updates) => {
         const next = structuredClone(circuit);
@@ -100,6 +281,7 @@ export default function Editor() {
         if (isSimulating) {
             setIsSimulating(false);
             setSimulationData(null);
+            setPlaybackState(prev => ({ ...prev, isPlaying: false, tranData: null }));
             return;
         }
 
@@ -123,6 +305,12 @@ export default function Editor() {
                 const currentMap = {};
                 const nodeVoltageMap = {};
 
+                // Map Ref -> Component ID (needed for playback)
+                const compRefToId = {};
+                for (const c of circuit.components) {
+                    if (c.ref) compRefToId[c.ref.toUpperCase()] = c.id;
+                }
+
                 if (res.results.analysis === "op" && res.results.dc) {
                     // Map currents to component IDs for visualization
                     if (res.results.dc.elementCurrents) {
@@ -139,51 +327,33 @@ export default function Editor() {
                         }
                     }
                 } else if (res.results.analysis === "tran" && res.results.tran) {
-                    const time = res.results.tran.time || [];
-                    const lastIdx = Math.max(0, time.length - 1);
-
                     const tran = res.results.tran;
-                    if (Array.isArray(tran.series)) {
-                        for (const s of tran.series) {
-                            const sig = s?.name;
-                            const values = s?.y;
-                            const v = Array.isArray(values) ? values[lastIdx] : undefined;
-                            if (typeof v !== "number") continue;
+                    const time = tran.time || [];
+                    const endTime = time.length > 0 ? time[time.length - 1] : 0;
 
-                            const mV = String(sig).match(/^v\((.+)\)$/i);
-                            if (mV) {
-                                nodeVoltageMap[mV[1]] = v;
-                                continue;
-                            }
+                    // Initialize Playback
+                    const maxCurrents = calculateMaxCurrents(tran, compRefToId);
 
-                            // Match current signals: @device[i] (OP) or i(device) (TRAN)
-                            const mI = String(sig).match(/^(?:@(.+)\[i\]|i\((.+)\))$/i);
-                            if (mI) {
-                                const ref = (mI[1] || mI[2]).toUpperCase();
-                                const comp = circuit.components.find((c) => String(c.ref || "").toUpperCase() === ref);
-                                if (comp) currentMap[comp.id] = v;
-                            }
-                        }
-                    } else if (tran.series && typeof tran.series === "object") {
-                        // Back-compat: older backend shape { series: { name: [] } }
-                        for (const [sig, values] of Object.entries(tran.series)) {
-                            const v = Array.isArray(values) ? values[lastIdx] : undefined;
-                            if (typeof v !== "number") continue;
+                    setPlaybackState({
+                        isPlaying: true,
+                        endTime,
+                        tranData: tran,
+                        compRefToId,
+                        nodeMaxCurrents: maxCurrents,
+                    });
 
-                            const mV = String(sig).match(/^v\((.+)\)$/i);
-                            if (mV) {
-                                nodeVoltageMap[mV[1]] = v;
-                                continue;
-                            }
+                    setPlaybackTime(0); // Reset time
 
-                            // Match current signals: @device[i] (OP) or i(device) (TRAN)
-                            const mI = String(sig).match(/^(?:@(.+)\[i\]|i\((.+)\))$/i);
-                            if (mI) {
-                                const ref = (mI[1] || mI[2]).toUpperCase();
-                                const comp = circuit.components.find((c) => String(c.ref || "").toUpperCase() === ref);
-                                if (comp) currentMap[comp.id] = v;
-                            }
-                        }
+                    // Auto-show live graph for transient simulations
+                    if (res.results.analysis === "tran") {
+                        setShowLiveGraph(true);
+                    }
+
+                    // Initial frame (t=0)
+                    const initialData = interpolateTransientData(tran, 0, compRefToId);
+                    if (initialData) {
+                        Object.assign(currentMap, initialData.currents);
+                        Object.assign(nodeVoltageMap, initialData.nodeVoltages);
                     }
                 }
 
@@ -191,6 +361,7 @@ export default function Editor() {
                     currents: currentMap,
                     nodes: res.nodes || {},
                     nodeVoltages: nodeVoltageMap,
+                    nodeMaxCurrents: playbackState.nodeMaxCurrents, // may be null if OP
                 });
 
                 const pinToNode = res.nodes?.pinToNode || {};
@@ -1765,35 +1936,103 @@ export default function Editor() {
 
                         {/* Animation Controls */}
                         <div className="mt-3 space-y-2 pt-3 border-t border-neutral-700">
-                            <div className="flex items-center justify-between">
-                                <label className="text-[10px] text-neutral-400 font-semibold">CURRENT ANIMATION</label>
-                                <button
-                                    onClick={() => setAnimationEnabled(!animationEnabled)}
-                                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
-                                        animationEnabled
-                                            ? "bg-green-600/20 text-green-400 border border-green-600/40"
-                                            : "bg-neutral-800 text-neutral-500 border border-neutral-700"
-                                    }`}
-                                >
-                                    {animationEnabled ? "ON" : "OFF"}
-                                </button>
-                            </div>
-                            <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="text-[10px] text-neutral-500">Speed</label>
-                                    <span className="text-[10px] text-neutral-400 font-mono">{animationSpeed.toFixed(1)}x</span>
-                                </div>
-                                <input
-                                    type="range"
-                                    min="0.1"
-                                    max="3.0"
-                                    step="0.1"
-                                    value={animationSpeed}
-                                    onChange={(e) => setAnimationSpeed(parseFloat(e.target.value))}
-                                    className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
-                                    disabled={!animationEnabled}
-                                />
-                            </div>
+                            {playbackState.tranData ? (
+                                <>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] text-neutral-400 font-semibold">TRANSIENT PLAYBACK</label>
+                                        <div className="flex gap-1">
+                                            <button
+                                                onClick={() => setPlaybackTime(0)}
+                                                className="p-1 hover:bg-neutral-800 rounded"
+                                                title="Restart"
+                                            >
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/></svg>
+                                            </button>
+                                            <button
+                                                onClick={() => setPlaybackState(s => ({ ...s, isPlaying: !s.isPlaying }))}
+                                                className={`p-1 rounded ${playbackState.isPlaying ? 'bg-yellow-600 text-black' : 'bg-neutral-800 hover:bg-neutral-700'}`}
+                                                title={playbackState.isPlaying ? "Pause" : "Play"}
+                                            >
+                                                {playbackState.isPlaying ? (
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                                                ) : (
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Time Scrubber */}
+                                    <div>
+                                        <div className="flex justify-between text-[10px] text-neutral-500 mb-1">
+                                            <span>{(playbackTime * 1000).toFixed(2)}ms</span>
+                                            <span>{(playbackState.endTime * 1000).toFixed(2)}ms</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max={playbackState.endTime || 0.01}
+                                            step={(playbackState.endTime || 0.01) / 1000}
+                                            value={playbackTime}
+                                            onChange={(e) => {
+                                                const t = parseFloat(e.target.value);
+                                                setPlaybackTime(t);
+                                                setPlaybackState(s => ({ ...s, isPlaying: false }));
+                                            }}
+                                            className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                                        />
+                                    </div>
+
+                                    {/* Speed Control */}
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-[10px] text-neutral-500">Speed</label>
+                                            <span className="text-[10px] text-neutral-400 font-mono">{animationSpeed.toFixed(1)}x</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0.1"
+                                            max="5.0"
+                                            step="0.1"
+                                            value={animationSpeed}
+                                            onChange={(e) => setAnimationSpeed(parseFloat(e.target.value))}
+                                            className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] text-neutral-400 font-semibold">CURRENT ANIMATION</label>
+                                        <button
+                                            onClick={() => setAnimationEnabled(!animationEnabled)}
+                                            className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                                                animationEnabled
+                                                    ? "bg-green-600/20 text-green-400 border border-green-600/40"
+                                                    : "bg-neutral-800 text-neutral-500 border border-neutral-700"
+                                            }`}
+                                        >
+                                            {animationEnabled ? "ON" : "OFF"}
+                                        </button>
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="text-[10px] text-neutral-500">Speed</label>
+                                            <span className="text-[10px] text-neutral-400 font-mono">{animationSpeed.toFixed(1)}x</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0.1"
+                                            max="3.0"
+                                            step="0.1"
+                                            value={animationSpeed}
+                                            onChange={(e) => setAnimationSpeed(parseFloat(e.target.value))}
+                                            className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                                            disabled={!animationEnabled}
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -1896,6 +2135,23 @@ export default function Editor() {
             <div className="flex-1 relative" onDragOver={onDragOver} onDrop={onDrop}>
                 {/* Top Right Button Group */}
                 <div className="absolute top-4 right-4 z-40 flex items-center gap-2">
+                    {/* Live Graph Button */}
+                    <button
+                        onClick={() => setShowLiveGraph(!showLiveGraph)}
+                        className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-full shadow-lg transition-all hover:scale-105 active:scale-95 ${
+                            showLiveGraph
+                                ? "bg-gradient-to-r from-yellow-600 to-yellow-500 text-black"
+                                : "bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-500 hover:to-purple-400 text-white"
+                        }`}
+                        title="Toggle Live Waveform"
+                        disabled={!playbackState.tranData}
+                    >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 12h4l3 9 4-18 3 9h4"/>
+                        </svg>
+                        Live
+                    </button>
+
                     {/* Graph Button */}
                     <button
                         onClick={() => setShowGraphModal(true)}
@@ -1981,6 +2237,15 @@ export default function Editor() {
                     <GraphModal
                         result={analogResult}
                         onClose={() => setShowGraphModal(false)}
+                    />
+                )}
+
+                {/* Live Waveform Graph */}
+                {showLiveGraph && playbackState.tranData && (
+                    <LiveWaveformGraph
+                        tranData={playbackState.tranData}
+                        currentTime={playbackTime}
+                        onClose={() => setShowLiveGraph(false)}
                     />
                 )}
 

@@ -87,23 +87,25 @@ export class ParticleSystem {
   /**
    * Update configuration for a wire
    * @param {string} wireId - Wire identifier
-   * @param {number} current - Current in amperes (can be negative for reverse flow)
-   * @param {boolean} isAC - Whether this is AC or DC
+   * @param {number} current - Instantaneous current in amperes (determines velocity/direction)
+   * @param {boolean} isAC - Whether this is AC (internal sine wave generation)
    * @param {number} frequency - Frequency in Hz (for AC)
+   * @param {number} [averageCurrent] - Representative current for particle density (e.g. peak/RMS). If omitted, uses `current`.
    */
-  setWireConfig(wireId, current, isAC = false, frequency = 1000) {
+  setWireConfig(wireId, current, isAC = false, frequency = 1000, averageCurrent = null) {
     const absCurrent = Math.abs(current);
+    const densityCurrent = averageCurrent !== null ? Math.abs(averageCurrent) : absCurrent;
 
-    // Determine particle count based on current magnitude
+    // Determine particle count based on DENSITY current (stable)
     // More current = more particles
     let particleCount = 0;
-    if (absCurrent > 1e-9) {
+    if (densityCurrent > 1e-9) {
       // Logarithmic scaling: 1µA -> 2 particles, 1mA -> 5, 1A -> 8, 10A -> 12
-      const log = Math.log10(absCurrent + 1e-12);
+      const log = Math.log10(densityCurrent + 1e-12);
       particleCount = Math.max(2, Math.min(15, Math.floor(5 + log * 2)));
     }
 
-    // Determine base velocity (pixels per frame, scaled by current)
+    // Determine base velocity based on INSTANTANEOUS current
     // Speed should increase with current magnitude
     let baseVelocity = 0;
     if (absCurrent > 1e-9) {
@@ -130,6 +132,8 @@ export class ParticleSystem {
       const newParticles = [];
       for (let i = 0; i < particleCount; i++) {
         // Distribute particles evenly along the wire
+        // If resizing, try to preserve relative positions or just reset?
+        // Resetting is safer for now to ensure even distribution
         const position = i / particleCount;
         newParticles.push(new Particle(wireId, position, baseVelocity));
       }
