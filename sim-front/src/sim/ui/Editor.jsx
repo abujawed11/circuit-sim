@@ -80,11 +80,18 @@ export default function Editor() {
     const [simulationData, setSimulationData] = useState(null); // { currents: { compId: amps } }
     const [showGraphModal, setShowGraphModal] = useState(false);
 
+    // Animation controls
+    const [animationEnabled, setAnimationEnabled] = useState(true);
+    const [animationSpeed, setAnimationSpeed] = useState(1.0);
+
     const updateAnalogAnalysis = (updates) => {
         const next = structuredClone(circuit);
         next.analogAnalysis = { ...next.analogAnalysis, ...updates };
+        if (updates.ac) {
+            next.analogAnalysis.ac = { ...next.analogAnalysis.ac, ...updates.ac };
+        }
         if (updates.tran) {
-             next.analogAnalysis.tran = { ...next.analogAnalysis.tran, ...updates.tran };
+            next.analogAnalysis.tran = { ...next.analogAnalysis.tran, ...updates.tran };
         }
         updateCircuit(next);
     };
@@ -101,7 +108,7 @@ export default function Editor() {
 
         // Ensure defaults if missing (for old saves)
         const analysis = circuit.analogAnalysis || { type: "op", tran: { step: "1u", stop: "10m" } };
-        
+
         try {
             const res = await simulateAnalog({
                 analogComponents: circuit.components,
@@ -111,7 +118,7 @@ export default function Editor() {
                     analysis
                 }
             });
-            
+
             if (res.ok && res.results) {
                 const currentMap = {};
                 const nodeVoltageMap = {};
@@ -1662,24 +1669,73 @@ export default function Editor() {
                             <div className="text-xs font-semibold text-neutral-300">Analog Analysis</div>
                             <div className="text-[10px] text-yellow-500 font-mono">ngspice</div>
                         </div>
-                        
+
                         <div className="flex gap-2">
-                            <select 
+                            <select
                                 value={circuit.analogAnalysis?.type || "op"}
                                 onChange={(e) => updateAnalogAnalysis({ type: e.target.value })}
                                 className="flex-1 bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
                             >
                                 <option value="op">Operating Point (.op)</option>
                                 <option value="tran">Transient (.tran)</option>
+                                <option value="ac">AC Analysis (.ac)</option>
                             </select>
                         </div>
+
+                        {circuit.analogAnalysis?.type === "ac" && (
+                            <div className="space-y-2 mb-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-[10px] text-neutral-500 block mb-0.5">Start Freq</label>
+                                        <input
+                                            type="text"
+                                            value={circuit.analogAnalysis?.ac?.fstart || "1"}
+                                            onChange={(e) => updateAnalogAnalysis({ ac: { fstart: e.target.value } })}
+                                            className="w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-neutral-500 block mb-0.5">Stop Freq</label>
+                                        <input
+                                            type="text"
+                                            value={circuit.analogAnalysis?.ac?.fstop || "10k"}
+                                            onChange={(e) => updateAnalogAnalysis({ ac: { fstop: e.target.value } })}
+                                            className="w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label className="text-[10px] text-neutral-500 block mb-0.5">Points</label>
+                                        <input
+                                            type="number"
+                                            value={circuit.analogAnalysis?.ac?.points || "10"}
+                                            onChange={(e) => updateAnalogAnalysis({ ac: { points: e.target.value } })}
+                                            className="w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-neutral-500 block mb-0.5">Variation</label>
+                                        <select
+                                            value={circuit.analogAnalysis?.ac?.variation || "dec"}
+                                            onChange={(e) => updateAnalogAnalysis({ ac: { variation: e.target.value } })}
+                                            className="w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
+                                        >
+                                            <option value="dec">Decade (log)</option>
+                                            <option value="oct">Octave (log)</option>
+                                            <option value="lin">Linear</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
 
                         {circuit.analogAnalysis?.type === "tran" && (
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
                                     <label className="text-[10px] text-neutral-500 block mb-0.5">Step</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={circuit.analogAnalysis?.tran?.step || "1u"}
                                         onChange={(e) => updateAnalogAnalysis({ tran: { step: e.target.value } })}
                                         className="w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
@@ -1687,8 +1743,8 @@ export default function Editor() {
                                 </div>
                                 <div>
                                     <label className="text-[10px] text-neutral-500 block mb-0.5">Stop</label>
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         value={circuit.analogAnalysis?.tran?.stop || "10m"}
                                         onChange={(e) => updateAnalogAnalysis({ tran: { stop: e.target.value } })}
                                         className="w-full bg-neutral-950 border border-neutral-700 rounded px-2 py-1 text-xs text-neutral-200 outline-none focus:border-yellow-600"
@@ -1697,16 +1753,48 @@ export default function Editor() {
                             </div>
                         )}
 
-                        <button 
+                        <button
                             onClick={handleToggleSimulation}
-                            className={`w-full rounded font-semibold text-xs py-1.5 transition-colors ${
-                                isSimulating 
-                                ? "bg-red-600 hover:bg-red-500 text-white" 
+                            className={`w-full rounded font-semibold text-xs py-1.5 transition-colors ${isSimulating
+                                ? "bg-red-600 hover:bg-red-500 text-white"
                                 : "bg-yellow-600 hover:bg-yellow-500 text-black"
-                            }`}
+                                }`}
                         >
                             {isSimulating ? "Stop Simulation" : "Run Analog"}
                         </button>
+
+                        {/* Animation Controls */}
+                        <div className="mt-3 space-y-2 pt-3 border-t border-neutral-700">
+                            <div className="flex items-center justify-between">
+                                <label className="text-[10px] text-neutral-400 font-semibold">CURRENT ANIMATION</label>
+                                <button
+                                    onClick={() => setAnimationEnabled(!animationEnabled)}
+                                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                                        animationEnabled
+                                            ? "bg-green-600/20 text-green-400 border border-green-600/40"
+                                            : "bg-neutral-800 text-neutral-500 border border-neutral-700"
+                                    }`}
+                                >
+                                    {animationEnabled ? "ON" : "OFF"}
+                                </button>
+                            </div>
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] text-neutral-500">Speed</label>
+                                    <span className="text-[10px] text-neutral-400 font-mono">{animationSpeed.toFixed(1)}x</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="0.1"
+                                    max="3.0"
+                                    step="0.1"
+                                    value={animationSpeed}
+                                    onChange={(e) => setAnimationSpeed(parseFloat(e.target.value))}
+                                    className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                                    disabled={!animationEnabled}
+                                />
+                            </div>
+                        </div>
                     </div>
 
                     <div className="mt-4 rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 text-xs text-neutral-300 leading-relaxed">
@@ -1824,11 +1912,10 @@ export default function Editor() {
                     {/* Run Analog Button */}
                     <button
                         onClick={handleToggleSimulation}
-                        className={`flex items-center gap-2 font-bold py-2 px-4 rounded-full shadow-lg transition-transform active:scale-95 ${
-                            isSimulating
+                        className={`flex items-center gap-2 font-bold py-2 px-4 rounded-full shadow-lg transition-transform active:scale-95 ${isSimulating
                             ? "bg-red-600 hover:bg-red-500 text-white"
                             : "bg-yellow-600 hover:bg-yellow-500 text-black"
-                        }`}
+                            }`}
                         title={isSimulating ? "Stop Simulation" : "Run Analog Simulation (ngspice)"}
                     >
                         {isSimulating ? (
@@ -1852,6 +1939,8 @@ export default function Editor() {
                 <Canvas
                     circuit={simulated}
                     simulationData={simulationData}
+                    animationEnabled={animationEnabled}
+                    animationSpeed={animationSpeed}
                     onPlace={addAt}
                     onAddJunction={onAddJunction}
                     onAddJunctionAndConnect={onAddJunctionAndConnect}

@@ -151,7 +151,15 @@ export function toSpiceNetlist({
       const pMinus = pins[1]?.id;
       const nPlus = pPlus ? nodeOf(pinToNode, pPlus) : `nc_${ref}_p`;
       const nMinus = pMinus ? nodeOf(pinToNode, pMinus) : SPICE_GROUND_NODE;
-      lines.push(`${ref} ${nPlus} ${nMinus} ${value}`);
+
+      // Auto-inject AC parameters if missing (for backward compatibility/UX)
+      // If user has SIN(...) but no AC part, default to AC 1 0
+      let finalValue = value;
+      if (finalValue.toUpperCase().startsWith("SIN") && !finalValue.toUpperCase().includes("AC")) {
+        finalValue += " AC 1 0";
+      }
+
+      lines.push(`${ref} ${nPlus} ${nMinus} ${finalValue}`);
       emittedElements.push(ref);
       markUsedNodes(nPlus, nMinus);
       continue;
@@ -214,6 +222,36 @@ export function toSpiceNetlist({
     if (allSignals) {
       lines.push(`wrdata out.csv ${allSignals}`);
     }
+  } else if (analysis.type === "ac") {
+    // .ac dec/oct/lin <n> <fstart> <fstop>
+    const variation = analysis.ac?.variation || "dec";
+    const points = analysis.ac?.points || 10;
+    const fstart = analysis.ac?.fstart || "1";
+    const fstop = analysis.ac?.fstop || "10k";
+
+    // AC analysis exports magnitude (dB) and phase.
+    // Use db()/ph() forms since they work broadly across ngspice builds and avoid
+    // relying on device internals like @R1[i] (which aren't available in AC).
+    const nodesForAc = Array.from(usedNodes)
+      .map((n) => String(n))
+      .filter((n) => n && n !== SPICE_GROUND_NODE)
+      .sort((a, b) => a.localeCompare(b));
+
+    // Guard against magnitude=0 causing ngspice "argument out of range for db".
+    // This can happen if the circuit has no AC excitation or a node is effectively 0V for the entire sweep.
+    const acSignals = nodesForAc.flatMap((n) => [
+      `db(mag(v(${n}))+1e-30)`,
+      `ph(v(${n})+1e-30)`,
+    ]);
+
+    // If there are no signals (e.g. empty circuit), still write something so the backend
+    // can show a useful result instead of "file not found".
+    const allSignals = (acSignals.length > 0 ? acSignals : ["frequency"]).join(" ");
+
+    lines.push("set wr_vecnames");
+    lines.push("set wr_singlescale"); // frequency
+    lines.push(`ac ${variation} ${points} ${fstart} ${fstop}`);
+    lines.push(`wrdata out_ac.csv ${allSignals}`);
   }
 
   lines.push("quit");

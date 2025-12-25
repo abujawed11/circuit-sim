@@ -94,6 +94,16 @@ def _is_float_token(s: str) -> bool:
     except Exception:
         return False
 
+def _raw_head_tail(raw_output: str, head_lines: int = 12, tail_lines: int = 24) -> str:
+    lines = (raw_output or "").splitlines()
+    head = lines[:head_lines]
+    tail = lines[-tail_lines:] if tail_lines > 0 else []
+    if not lines:
+        return ""
+    if len(lines) <= head_lines + tail_lines:
+        return "\n".join(lines)
+    return "\n".join([*head, "...", *tail])
+
 def _decimate_series(x: List[float], ys: List[List[float]], max_points: int = 5000) -> Tuple[List[float], List[List[float]], int]:
     n = len(x)
     if n <= max_points or max_points <= 0:
@@ -162,6 +172,8 @@ def run_ngspice(netlist: str, analysis_type: str, timeout_s: int = 30) -> Dict[s
         { ok, analysis:"op", op:{nodeVoltages:{}}, warnings:[], raw:"..." }
       For TRAN:
         { ok, analysis:"tran", tran:{time:[], series:{}}, warnings:[], raw:"..." }
+      For AC:
+        { ok, analysis:"ac", ac:{frequency:[], series:[{name,y}]}, warnings:[], raw:"..." }
       For errors:
         { ok:false, errors:[...], raw:"..." }
     """
@@ -216,6 +228,9 @@ def run_ngspice(netlist: str, analysis_type: str, timeout_s: int = 30) -> Dict[s
 
         if analysis_type == "op":
             return _parse_op_wrdata_results(temp_dir, raw_output, netlist)
+
+        if analysis_type == "ac":
+            return _parse_ac_results(temp_dir, raw_output, netlist)
 
         return {
             "ok": False,
@@ -300,7 +315,7 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
     csv_path = os.path.join(temp_dir, out_file)
     if not os.path.exists(csv_path):
         # Include snippet of raw output to help debug why file wasn't written
-        raw_snippet = "\n".join(raw_output.splitlines()[:10])
+        raw_snippet = _raw_head_tail(raw_output)
         return {
             "ok": False,
             "errors": [
@@ -438,6 +453,169 @@ def _parse_tran_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[st
         return {
             "ok": False,
             "errors": [f"Error parsing transient output {out_file}: {str(e)}"],
+            "raw": raw_output,
+        }
+
+
+# ----------------------------
+# AC parsing (wrdata -> out_ac.csv)
+# ----------------------------
+
+def _parse_ac_results(temp_dir: str, raw_output: str, netlist: str) -> Dict[str, Any]:
+    """
+    Parse AC analysis output from wrdata.
+
+    Preferred format:
+      - netlist includes `set wr_vecnames` and `set wr_singlescale`
+      - out_ac.csv starts with a header row and a single frequency scale column
+
+    Fallback format:
+      - legacy alternating format (freq val1 freq val2 ...)
+    """
+    warnings: List[str] = []
+
+    out_file, var_names = _extract_wrdata_vars(netlist)
+    if not out_file:
+        return {
+            "ok": False,
+            "errors": ["No wrdata command found in netlist; cannot locate AC CSV output."],
+            "raw": raw_output,
+        }
+
+    csv_path = os.path.join(temp_dir, out_file)
+    if not os.path.exists(csv_path):
+        raw_snippet = _raw_head_tail(raw_output)
+        return {
+            "ok": False,
+            "errors": [
+                f"Output file not found: {out_file}. Did ngspice write it?",
+                f"Ngspice output snippet:\n{raw_snippet}",
+            ],
+            "raw": raw_output,
+        }
+
+    # Preferred: parse header + columns (wr_vecnames / wr_singlescale)
+    try:
+        cols, data_by_col = _parse_wrdata_table(csv_path)
+        if cols and data_by_col and len(cols) == len(data_by_col):
+            freq_idx = None
+            for i, c in enumerate(cols):
+                cl = c.strip().lower()
+                if cl in ("frequency", "freq", "f"):
+                    freq_idx = i
+                    break
+
+            # If we don't see an obvious frequency column, assume first column is the scale.
+            if freq_idx is None and len(cols) >= 2:
+                freq_idx = 0
+
+            if freq_idx is not None:
+                x_full = data_by_col[freq_idx]
+                series_names = [c for i, c in enumerate(cols) if i != freq_idx]
+                ys_full = [data_by_col[i] for i in range(len(cols)) if i != freq_idx]
+
+                x, ys, step = _decimate_series(x_full, ys_full, max_points=5000)
+                if step > 1:
+                    warnings.append(f"AC results downsampled by {step}x for plotting.")
+
+                series_list = [{"name": name, "y": ys[i]} for i, name in enumerate(series_names)]
+
+                return {
+                    "ok": True,
+                    "analysis": "ac",
+                    "ac": {
+                        "x": x,
+                        "series": series_list,
+                        # Back-compat / clarity
+                        "frequency": x,
+                    },
+                    "warnings": warnings,
+                    "raw": raw_output,
+                }
+    except Exception as e:
+        warnings.append(f"AC table parse failed, trying legacy parser: {str(e)}")
+
+    # Fallback: handle both wr_singlescale and legacy alternating formats
+    try:
+        data = {"frequency": [], "series": {name: [] for name in var_names}}
+        with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines_list = f.readlines()
+
+        first_vals = None
+        for line in lines_list:
+            parts = _split_row(line.strip())
+            if not parts or len(parts) < 2:
+                continue
+            try:
+                first_vals = [float(p) for p in parts]
+                break
+            except ValueError:
+                continue
+
+        if not first_vals:
+            raise ValueError("No valid numeric data found in CSV")
+
+        expected_cols_singlescale = 1 + len(var_names)
+        expected_cols_alternating = 1 + (len(var_names) * 2)
+        use_singlescale = abs(len(first_vals) - expected_cols_singlescale) < abs(len(first_vals) - expected_cols_alternating)
+
+        for line in lines_list:
+            row = line.strip()
+            if not row:
+                continue
+
+            parts = _split_row(row)
+            if len(parts) < 2:
+                continue
+
+            try:
+                vals = [float(p) for p in parts]
+            except ValueError:
+                continue
+
+            f0 = vals[0]
+            data["frequency"].append(f0)
+
+            if use_singlescale:
+                for i, name in enumerate(var_names):
+                    val_idx = 1 + i
+                    if val_idx < len(vals):
+                        data["series"][name].append(vals[val_idx])
+                    else:
+                        data["series"][name].append(float("nan"))
+            else:
+                for i, name in enumerate(var_names):
+                    val_idx = 1 + (i * 2)
+                    if val_idx < len(vals):
+                        data["series"][name].append(vals[val_idx])
+                    else:
+                        data["series"][name].append(float("nan"))
+
+        x_full = data["frequency"]
+        series_names = list(data["series"].keys())
+        ys_full = [data["series"][n] for n in series_names]
+
+        x, ys, step = _decimate_series(x_full, ys_full, max_points=5000)
+        if step > 1:
+            warnings.append(f"AC results downsampled by {step}x for plotting.")
+
+        series_list = [{"name": name, "y": ys[i]} for i, name in enumerate(series_names)]
+
+        return {
+            "ok": True,
+            "analysis": "ac",
+            "ac": {
+                "x": x,
+                "series": series_list,
+                "frequency": x,
+            },
+            "warnings": warnings,
+            "raw": raw_output,
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "errors": [f"Error parsing AC output {out_file}: {str(e)}"],
             "raw": raw_output,
         }
 

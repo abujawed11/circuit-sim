@@ -9,42 +9,56 @@ export default function GraphModal({ result, onClose }) {
   const panelRef = useRef(null);
   const dragRef = useRef(null);
 
-  const tranData = useMemo(() => {
-    if (result?.results?.analysis !== "tran" || !result.results.tran) return null;
-    const tran = result.results.tran;
+  const { data: simData, mode } = useMemo(() => {
+    if (!result?.results) return { data: null, mode: null };
+    const { results } = result;
 
-    // Preferred backend shape: { x, series: [{name,y}] }
-    if (Array.isArray(tran.series) && Array.isArray(tran.x)) {
-      return { x: tran.x, series: tran.series };
+    if (results.analysis === "tran" && results.tran) {
+       const tran = results.tran;
+       let data = null;
+       if (Array.isArray(tran.series) && Array.isArray(tran.x)) {
+         data = { x: tran.x, series: tran.series };
+       } else if (Array.isArray(tran.time) && tran.series && typeof tran.series === "object") {
+         const series = Object.entries(tran.series).map(([name, y]) => ({ name, y }));
+         data = { x: tran.time, series };
+       } else if (Array.isArray(tran.time) && tran.seriesMap && typeof tran.seriesMap === "object") {
+         const series = Object.entries(tran.seriesMap).map(([name, y]) => ({ name, y }));
+         data = { x: tran.time, series };
+       }
+       return { data, mode: "tran" };
     }
 
-    // Back-compat backend shape: { time, series: {name: []} }
-    if (Array.isArray(tran.time) && tran.series && typeof tran.series === "object") {
-      const series = Object.entries(tran.series).map(([name, y]) => ({ name, y }));
-      return { x: tran.time, series };
+    if (results.analysis === "ac" && results.ac) {
+      const ac = results.ac;
+      let data = null;
+      if (Array.isArray(ac.series) && Array.isArray(ac.x)) {
+        data = { x: ac.x, series: ac.series };
+      } else if (Array.isArray(ac.frequency) && Array.isArray(ac.series)) {
+        data = { x: ac.frequency, series: ac.series };
+      }
+      return { data, mode: "ac" };
     }
 
-    // Back-compat fallback: { time, seriesMap: {name: []} }
-    if (Array.isArray(tran.time) && tran.seriesMap && typeof tran.seriesMap === "object") {
-      const series = Object.entries(tran.seriesMap).map(([name, y]) => ({ name, y }));
-      return { x: tran.time, series };
-    }
-
-    return null;
+    return { data: null, mode: null };
   }, [result]);
 
   const availableTraceNames = useMemo(() => {
-    if (!tranData?.series) return [];
-    return tranData.series.map((s) => s.name).filter(Boolean);
-  }, [tranData]);
+    if (!simData?.series) return [];
+    return simData.series.map((s) => s.name).filter(Boolean);
+  }, [simData]);
 
   const { voltageTraces, currentTraces } = useMemo(() => {
-    const volts = availableTraceNames.filter((n) => String(n).toLowerCase().startsWith("v("));
-    const currents = availableTraceNames.filter((n) => {
-      const s = String(n).toLowerCase();
-      // Match i(device) or @device[i] formats
-      return s.startsWith("i(") || (s.startsWith("@") && s.endsWith("[i]"));
+    const volts = [];
+    const currents = [];
+    const others = [];
+
+    availableTraceNames.forEach(n => {
+       const s = String(n).toLowerCase();
+       if (s.startsWith("v(")) volts.push(n);
+       else if (s.startsWith("i(") || (s.startsWith("@") && s.endsWith("[i]"))) currents.push(n);
+       else others.push(n);
     });
+
     return { voltageTraces: volts, currentTraces: currents };
   }, [availableTraceNames]);
 
@@ -55,11 +69,16 @@ export default function GraphModal({ result, onClose }) {
   }, [availableTraceNames, currentTraces, filterMode, voltageTraces]);
 
   const defaultSelectedTraceNames = useMemo(() => {
-    if (!tranData) return [];
+    if (!simData) return [];
     if (filterMode === "voltages") return voltageTraces.slice(0, 6);
     if (filterMode === "currents") return currentTraces.slice(0, 6);
-    return [...voltageTraces.slice(0, 4), ...currentTraces.slice(0, 2)];
-  }, [currentTraces, filterMode, tranData, voltageTraces]);
+    
+    // Default selection strategy
+    const combined = [...voltageTraces.slice(0, 4), ...currentTraces.slice(0, 2)];
+    // If no standard volts/currents (e.g. AC db/ph traces), just pick first few
+    if (combined.length === 0) return availableTraceNames.slice(0, 6);
+    return combined;
+  }, [currentTraces, filterMode, simData, voltageTraces, availableTraceNames]);
 
   const effectiveSelectedTraceNames = selectedTraceNames ?? defaultSelectedTraceNames;
 
@@ -69,20 +88,6 @@ export default function GraphModal({ result, onClose }) {
       return base.includes(name) ? base.filter((n) => n !== name) : [...base, name];
     });
   };
-
-  // const clampToViewport = (next) => {
-  //   if (typeof window === "undefined") return next;
-  //   const pad = 8;
-  //   const rect = panelRef.current?.getBoundingClientRect();
-  //   const w = rect?.width ?? 900;
-  //   const h = rect?.height ?? 600;
-  //   const maxX = Math.max(pad, window.innerWidth - pad - w);
-  //   const maxY = Math.max(pad, window.innerHeight - pad - h);
-  //   return {
-  //     x: Math.max(pad, Math.min(maxX, next.x)),
-  //     y: Math.max(pad, Math.min(maxY, next.y)),
-  //   };
-  // };
 
   const clampToViewport = (next) => {
     if (typeof window === "undefined") return next;
@@ -156,7 +161,7 @@ export default function GraphModal({ result, onClose }) {
   };
 
   // Floating draggable window (no full-screen overlay)
-  if (!tranData) {
+  if (!simData) {
     return (
       <div
         ref={panelRef}
@@ -169,7 +174,7 @@ export default function GraphModal({ result, onClose }) {
           onPointerMove={onHeaderPointerMove}
           onPointerUp={onHeaderPointerUp}
         >
-          <div className="font-semibold text-neutral-200">Transient Graph</div>
+          <div className="font-semibold text-neutral-200">Simulation Graph</div>
           <button
             onClick={onClose}
             onPointerDown={(e) => e.stopPropagation()}
@@ -181,8 +186,8 @@ export default function GraphModal({ result, onClose }) {
           </button>
         </div>
         <div className="p-4 overflow-auto">
-          <div className="text-neutral-300 mb-2 text-sm">No Transient Data</div>
-          <div className="text-neutral-500 text-xs">Run a transient analysis to view the graph.</div>
+          <div className="text-neutral-300 mb-2 text-sm">No Simulation Data</div>
+          <div className="text-neutral-500 text-xs">Run a transient or AC analysis to view the graph.</div>
         </div>
       </div>
     );
@@ -202,7 +207,7 @@ export default function GraphModal({ result, onClose }) {
           onPointerUp={onHeaderPointerUp}
         >
           <div>
-            <h2 className="text-2xl font-bold text-white">Transient Analysis Graph</h2>
+            <h2 className="text-2xl font-bold text-white">{mode === "ac" ? "AC Analysis Graph" : "Transient Analysis Graph"}</h2>
             <p className="text-sm text-neutral-400 mt-1">Interactive waveform viewer</p>
           </div>
           <button
@@ -227,7 +232,7 @@ export default function GraphModal({ result, onClose }) {
                 : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white"
               }`}
           >
-            Voltages Only
+            Voltages
             {voltageTraces.length > 0 && (
               <span className="ml-2 text-xs opacity-75">({voltageTraces.length})</span>
             )}
@@ -242,7 +247,7 @@ export default function GraphModal({ result, onClose }) {
                 : "bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white"
               }`}
           >
-            Currents Only
+            Currents
             {currentTraces.length > 0 && (
               <span className="ml-2 text-xs opacity-75">({currentTraces.length})</span>
             )}
@@ -328,7 +333,7 @@ export default function GraphModal({ result, onClose }) {
                 <div className="text-sm">Select traces from the sidebar to view the graph</div>
               </div>
             </div>
-          ) : filterMode === "all" ? (
+          ) : filterMode === "all" && mode === "tran" ? (
             <div className="h-full grid grid-rows-2 gap-4 min-h-0">
 
               {voltageTraces.some((v) => effectiveSelectedTraceNames.includes(v)) && (
@@ -338,10 +343,11 @@ export default function GraphModal({ result, onClose }) {
                     Voltages
                   </div>
                   <TransientPlot
-                    x={tranData.x}
-                    series={tranData.series}
+                    x={simData.x}
+                    series={simData.series}
                     selectedNames={effectiveSelectedTraceNames.filter((n) => voltageTraces.includes(n))}
                     yAxisLabel="Voltage (V)"
+                    mode={mode}
                   />
                 </div>
               )}
@@ -353,21 +359,33 @@ export default function GraphModal({ result, onClose }) {
                     Currents
                   </div>
                   <TransientPlot
-                    x={tranData.x}
-                    series={tranData.series}
+                    x={simData.x}
+                    series={simData.series}
                     selectedNames={effectiveSelectedTraceNames.filter((n) => currentTraces.includes(n))}
                     autoScaleCurrents={true}
+                    mode={mode}
                   />
                 </div>
               )}
+              {/* If we have selected items but neither volt nor current (e.g. logic?), fallback */}
+               {(!voltageTraces.some(v => effectiveSelectedTraceNames.includes(v)) && 
+                 !currentTraces.some(c => effectiveSelectedTraceNames.includes(c))) && (
+                   <TransientPlot
+                     x={simData.x}
+                     series={simData.series}
+                     selectedNames={effectiveSelectedTraceNames}
+                     mode={mode}
+                   />
+               )}
             </div>
           ) : (
             <TransientPlot
-              x={tranData.x}
-              series={tranData.series}
+              x={simData.x}
+              series={simData.series}
               selectedNames={effectiveSelectedTraceNames}
-              autoScaleCurrents={filterMode === "currents"}
-              yAxisLabel={filterMode === "voltages" ? "Voltage (V)" : "Current"}
+              autoScaleCurrents={filterMode === "currents" && mode === "tran"}
+              yAxisLabel={mode === "ac" ? "Mag (dB) / Phase (°)" : (filterMode === "voltages" ? "Voltage (V)" : "Value")}
+              mode={mode}
             />
           )}
         </div>
@@ -377,17 +395,15 @@ export default function GraphModal({ result, onClose }) {
         <div className="text-xs text-neutral-500">
           {filterMode === "all" ? (
             <>
-              Split View:{" "}
-              {voltageTraces.filter((v) => effectiveSelectedTraceNames.includes(v)).length} voltage
-              {voltageTraces.filter((v) => effectiveSelectedTraceNames.includes(v)).length !== 1 ? "s" : ""}{" "}
-              | {currentTraces.filter((c) => effectiveSelectedTraceNames.includes(c)).length} current
-              {currentTraces.filter((c) => effectiveSelectedTraceNames.includes(c)).length !== 1 ? "s" : ""}{" "}
-              | {tranData?.x?.length || 0} points
+              {voltageTraces.filter((v) => effectiveSelectedTraceNames.includes(v)).length} voltage |{" "}
+              {currentTraces.filter((c) => effectiveSelectedTraceNames.includes(c)).length} current |{" "}
+              {effectiveSelectedTraceNames.filter(n => !voltageTraces.includes(n) && !currentTraces.includes(n)).length} other |{" "}
+              {simData?.x?.length || 0} points
             </>
           ) : (
             <>
               {effectiveSelectedTraceNames.length} trace{effectiveSelectedTraceNames.length !== 1 ? "s" : ""} selected |{" "}
-              {tranData?.x?.length || 0} points
+              {simData?.x?.length || 0} points
             </>
           )}
         </div>

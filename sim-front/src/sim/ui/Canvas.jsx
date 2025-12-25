@@ -1,6 +1,7 @@
 ﻿import React, { useRef, useState } from "react";
 import { KIND, LV } from "../model/types";
 import { ANALOG_DOMAIN, ANALOG_KIND } from "../analog/model/analogTypes";
+import { ParticleSystem } from "./ParticleSystem";
 
 const PIN_RADIUS = 10;
 const WIRE_HIT_PX = 8;
@@ -205,8 +206,16 @@ export default function Canvas({
   onOpenProperties,
   onSelectionChange,
   simulationData, // âœ… Receive simulation data (currents)
+  animationEnabled = true,
+  animationSpeed = 1.0,
 }) {
   const ref = useRef(null);
+  const particleSystemRef = useRef(null);
+
+  // Initialize particle system once
+  if (!particleSystemRef.current) {
+    particleSystemRef.current = new ParticleSystem();
+  }
 
   // Draft wire:
   // fromPinId: starting output pin
@@ -488,6 +497,80 @@ export default function Canvas({
     return { pinToNode, nodeMaxAbsCurrent, dist, getNodeV };
   }, [simulationData, circuit.wires, circuit.components]);
 
+  // Update particle system when simulation data or circuit changes
+  React.useEffect(() => {
+    const ps = particleSystemRef.current;
+    if (!ps) return;
+
+    // Clear all particles first
+    ps.clear();
+
+    // Only create particles if we have simulation data
+    if (!simulationData || !circuit) return;
+
+    // Extract AC frequency from VAC components
+    let acFrequency = 1000; // Default 1kHz
+    let hasVAC = false;
+
+    for (const c of circuit.components || []) {
+      if (c?.kind === ANALOG_KIND.VAC && c?.domain === ANALOG_DOMAIN) {
+        hasVAC = true;
+        const value = c?.props?.value || "";
+        // Parse SIN(offset amp freq delay damping) format
+        // Example: "SIN(0 5 1k)" -> frequency is 1k = 1000 Hz
+        const sinMatch = value.match(/SIN\([^)]*\s+([\d.]+[kKmMuUnNpP]?)\)/i);
+        if (sinMatch) {
+          const freqStr = sinMatch[1];
+          // Parse engineering notation (1k = 1000, 1M = 1e6, etc.)
+          const parseEngNotation = (str) => {
+            const match = str.match(/([\d.]+)([kKmMuUnNpP]?)/);
+            if (!match) return parseFloat(str);
+            const value = parseFloat(match[1]);
+            const suffix = match[2].toLowerCase();
+            const multipliers = { k: 1e3, m: 1e-3, u: 1e-6, n: 1e-9, p: 1e-12 };
+            return value * (multipliers[suffix] || 1);
+          };
+          acFrequency = parseEngNotation(freqStr);
+          break; // Use first VAC component's frequency
+        }
+      }
+    }
+
+    // For each wire, configure particles based on current flow
+    for (const wire of circuit.wires || []) {
+      const flow = getWireFlow(wire);
+
+      if (flow && flow.active && Math.abs(flow.speed) > 0.001) {
+        // Calculate current magnitude (rough estimate from speed)
+        const current = Math.pow(10, (flow.speed - 0.9) / 0.25) - 1e-12;
+
+        // Set particle configuration for this wire
+        ps.setWireConfig(wire.id, current * flow.direction, hasVAC, acFrequency);
+      }
+    }
+  }, [simulationData, circuit, analogFlowCtx]);
+
+  // Update particles every frame
+  React.useEffect(() => {
+    let lastTime = Date.now();
+    let animId;
+
+    const updateLoop = () => {
+      const now = Date.now();
+      const dt = (now - lastTime) / 1000; // Convert to seconds
+      lastTime = now;
+
+      if (particleSystemRef.current && animationEnabled) {
+        particleSystemRef.current.update(dt * animationSpeed);
+      }
+
+      animId = requestAnimationFrame(updateLoop);
+    };
+
+    animId = requestAnimationFrame(updateLoop);
+    return () => cancelAnimationFrame(animId);
+  }, [animationEnabled, animationSpeed]);
+
   const speedFromCurrent = (absI) => {
     if (typeof absI !== "number" || absI <= 0) return 0.4;
     const log = Math.log10(absI + 1e-12);
@@ -561,6 +644,8 @@ export default function Canvas({
     ctx.globalAlpha = 1;
 
     // ---- wires (polyline) ----
+    const wirePaths = new Map(); // For particle rendering
+
     for (const w of circuit.wires) {
 
       const from = findPinPos(circuit, w.fromPinId);
@@ -580,23 +665,8 @@ export default function Canvas({
       const pts = buildWirePolyline(from, to, w.points);
       drawPolyline(ctx, pts);
 
-      // Current Flow Animation - single pass, node-based
-      const flow = getWireFlow(w);
-      if (flow && flow.active) {
-          ctx.strokeStyle = "#00FF00"; // Yellow/Bright for current
-          ctx.lineWidth = 4;
-          ctx.setLineDash([4, 10]); // dot dash pattern
-          
-          // Use monotonic animTime for variable speed animation
-          ctx.lineDashOffset = -animTime * (flow.speed || 2) * flow.direction;
-          
-          // Draw over same path
-          drawPolyline(ctx, pts);
-          
-          // Reset
-          ctx.setLineDash([]);
-          ctx.lineDashOffset = 0;
-      }
+      // Store wire path for particle rendering
+      wirePaths.set(w.id, pts);
 
       if (isSel) {
         for (const p of pts) {
@@ -606,6 +676,11 @@ export default function Canvas({
           ctx.fill();
         }
       }
+    }
+
+    // Render particles for current flow animation
+    if (particleSystemRef.current && wirePaths.size > 0) {
+      particleSystemRef.current.render(ctx, wirePaths);
     }
 
 

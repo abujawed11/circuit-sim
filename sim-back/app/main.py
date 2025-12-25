@@ -17,8 +17,8 @@ app.add_middleware(
 )
 
 class AnalogAnalysis(BaseModel):
-    type: str # "op" or "tran"
-    # Optional parameters for tran
+    type: str  # "op" | "tran" | "ac"
+    # Optional parameters (frontend also includes nested `tran` / `ac`, which are accepted as extras)
     step: Optional[str] = None
     stop: Optional[str] = None
 

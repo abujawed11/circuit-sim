@@ -32,7 +32,18 @@ export default function AnalogResultsPanel({ result, onClose }) {
     return null;
   })();
 
-  const availableTraceNames = tranData?.series ? tranData.series.map((s) => s.name).filter(Boolean) : [];
+  const acData = (() => {
+    if (results?.analysis !== "ac" || !results?.ac) return null;
+    if (Array.isArray(results.ac.series) && Array.isArray(results.ac.x)) {
+      return { x: results.ac.x, series: results.ac.series };
+    }
+    if (Array.isArray(results.ac.frequency) && Array.isArray(results.ac.series)) {
+      return { x: results.ac.frequency, series: results.ac.series };
+    }
+    return null;
+  })();
+
+  const availableTraceNames = (tranData?.series || acData?.series) ? (tranData || acData).series.map((s) => s.name).filter(Boolean) : [];
 
   const defaultSelectedTraceNames = (() => {
     const volts = availableTraceNames.filter((n) => String(n).toLowerCase().startsWith("v("));
@@ -288,6 +299,68 @@ export default function AnalogResultsPanel({ result, onClose }) {
                   <TransientPlot x={tranData.x} series={tranData.series} selectedNames={effectiveSelectedTraceNames} />
                 </div>
               )}
+            </details>
+          </div>
+        )}
+
+        {/* Results: AC */}
+        {results?.analysis === "ac" && acData && (
+          <div>
+            <div className="font-semibold text-neutral-300 text-xs mb-2">AC Analysis</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left border-collapse whitespace-nowrap">
+                <thead>
+                  <tr className="border-b border-zinc-700 text-neutral-500">
+                    <th className="py-1 px-2">Frequency (Hz)</th>
+                    {acData.series.map((s) => (
+                      <th key={s.name} className="py-1 px-2">{s.name}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {acData.x.slice(0, 50).map((f, i) => (
+                    <tr key={i} className="border-b border-zinc-800 font-mono text-neutral-300">
+                      <td className="py-1 px-2">{f.toExponential(3)}</td>
+                      {acData.series.map((s) => (
+                        <td key={s.name} className="py-1 px-2">
+                          {typeof s.y[i] === 'number' ? s.y[i].toFixed(4) : s.y[i]}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {acData.x.length > 50 && (
+                <div className="text-xs text-neutral-500 mt-1 italic">... {acData.x.length - 50} more rows</div>
+              )}
+            </div>
+            
+            <details className="mt-4 text-xs text-neutral-400" open>
+              <summary className="cursor-pointer hover:text-neutral-300">AC Plot</summary>
+              <div className="mt-2 space-y-3">
+                  <div className="max-h-28 overflow-auto border border-zinc-800 rounded p-2 bg-black/30">
+                    <div className="text-[11px] text-neutral-500 mb-1">Traces</div>
+                    <div className="grid grid-cols-1 gap-1">
+                      {availableTraceNames.map((name) => (
+                        <label key={name} className="flex items-center gap-2 text-[11px]">
+                          <input
+                            type="checkbox"
+                            checked={effectiveSelectedTraceNames.includes(name)}
+                            onChange={() => toggleTrace(name)}
+                          />
+                          <span className="font-mono text-zinc-200">{name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <TransientPlot 
+                    x={acData.x} 
+                    series={acData.series} 
+                    selectedNames={effectiveSelectedTraceNames} 
+                    mode="ac"
+                    yAxisLabel="Mag (dB) / Phase (°)"
+                  />
+              </div>
             </details>
           </div>
         )}

@@ -129,24 +129,33 @@ function Badge({ children }) {
 // Extracted Editors to prevent re-creation on render
 
 const VacEditor = ({ comp, onChange }) => {
-  // Parse SPICE SIN(...) string
+  // Parse SPICE SIN(...) and AC parameters
   const params = useMemo(() => {
-    const valStr = comp.props?.value;
-    const m = (valStr || "").match(/^SIN\s*\((.*)\)$/i);
-    if (!m) return { offset: 0, amp: 5, freq: "1k", delay: 0, damping: 0 };
-    const parts = m[1].trim().split(/\s+/);
+    const valStr = comp.props?.value || "";
+    
+    // Parse SIN(...) -> SIN(offset amp freq delay damping)
+    const mSin = valStr.match(/SIN\s*\(([^)]*)\)/i);
+    const sinParts = mSin ? mSin[1].trim().split(/\s+/) : [];
+    
+    // Parse AC ... -> AC mag phase
+    const mAc = valStr.match(/AC\s+([0-9.]+)\s*([0-9.]*)/i);
+
     return {
-      offset: parts[0] ?? 0,
-      amp: parts[1] ?? 5,
-      freq: parts[2] ?? "1k",
-      delay: parts[3] ?? 0,
-      damping: parts[4] ?? 0,
+      offset: sinParts[0] ?? 0,
+      amp: sinParts[1] ?? 5,
+      freq: sinParts[2] ?? "1k",
+      delay: sinParts[3] ?? 0,
+      damping: sinParts[4] ?? 0,
+      acMag: mAc ? mAc[1] : 1,     // Default AC Mag to 1V if missing
+      acPhase: mAc && mAc[2] ? mAc[2] : 0, // Default AC Phase to 0
     };
   }, [comp.props?.value]);
 
   const updateSineValue = (field, newValue) => {
     const next = { ...params, [field]: newValue };
-    const val = `SIN(${next.offset} ${next.amp} ${next.freq} ${next.delay} ${next.damping})`;
+    const sinPart = `SIN(${next.offset} ${next.amp} ${next.freq} ${next.delay} ${next.damping})`;
+    const acPart = `AC ${next.acMag} ${next.acPhase}`;
+    const val = `${sinPart} ${acPart}`;
     onChange("value", val, false);
   };
 
@@ -166,7 +175,22 @@ const VacEditor = ({ comp, onChange }) => {
         <div className="flex items-center justify-between"><Label>Frequency</Label><span className="text-neutral-500"><Icon name="sine" className="w-4 h-4" /></span></div>
         <Input value={params.freq} onChange={(e) => updateSineValue("freq", e.target.value)} placeholder="1k" />
       </div>
-      <div className="grid grid-cols-2 gap-3 mt-3">
+
+      <div className="mt-4 pt-4 border-t border-neutral-800">
+        <div className="text-xs font-semibold text-neutral-400 mb-2 uppercase tracking-wide">AC Analysis Config</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label>AC Mag (V)</Label>
+            <Input value={params.acMag} onChange={(e) => updateSineValue("acMag", e.target.value)} placeholder="1" />
+          </div>
+          <div className="space-y-2">
+            <Label>AC Phase (°)</Label>
+            <Input value={params.acPhase} onChange={(e) => updateSineValue("acPhase", e.target.value)} placeholder="0" />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-neutral-800">
         <div className="space-y-2">
           <div className="flex items-center justify-between"><Label>Delay (s)</Label><span className="text-neutral-500"><Icon name="clock" className="w-4 h-4" /></span></div>
           <Input value={params.delay} onChange={(e) => updateSineValue("delay", e.target.value)} placeholder="0" />

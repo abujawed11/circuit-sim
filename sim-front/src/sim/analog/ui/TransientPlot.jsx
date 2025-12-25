@@ -89,6 +89,16 @@ const getTimeUnitInfo = (range) => {
   return { factor: 1, unit: "s" }; // fallback
 };
 
+// --- FREQUENCY AXIS HELPERS ---
+const getFreqUnitInfo = (min, max) => {
+  // Use max frequency to determine unit
+  const abs = Math.abs(max);
+  if (abs >= 1e9) return { factor: 1e-9, unit: "GHz" };
+  if (abs >= 1e6) return { factor: 1e-6, unit: "MHz" };
+  if (abs >= 1e3) return { factor: 1e-3, unit: "kHz" };
+  return { factor: 1, unit: "Hz" };
+};
+
 // --- INTERACTIONS HELPER (Zoom, Pan, Reset) ---
 const installInteractions = (u, initialData) => {
   // 1. WHEEL ZOOM
@@ -212,7 +222,7 @@ const installInteractions = (u, initialData) => {
     });
   };
 
-  const onMouseUp = (e) => {
+  const onMouseUp = () => {
     if (isDragging) {
       isDragging = false;
       u.over.style.cursor = "default";
@@ -249,7 +259,7 @@ const installInteractions = (u, initialData) => {
   };
 };
 
-export default function TransientPlot({ x = [], series = [], selectedNames = [], autoScaleCurrents = false, yAxisLabel = "Value" }) {
+export default function TransientPlot({ x = [], series = [], selectedNames = [], autoScaleCurrents = false, yAxisLabel = "Value", mode = "tran" }) {
   const containerRef = useRef(null);
   const plotRef = useRef(null);
   const [size, setSize] = useState({ w: 10, h: 10 });
@@ -287,15 +297,26 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
       points: { show: false },
     }));
 
+    const isAc = mode === "ac";
+
     return {
       width: size.w,
       height: size.h,
-      scales: { x: { time: false } },
+      scales: {
+        x: {
+          time: false,
+          distr: isAc ? 3 : 1, // 3 = Logarithmic, 1 = Linear
+        }
+      },
       axes: [
         {
           label: (u) => {
             const min = u.scales.x.min;
             const max = u.scales.x.max;
+            if (isAc) {
+              const info = getFreqUnitInfo(min, max);
+              return `Frequency (${info.unit})`;
+            }
             const info = getTimeUnitInfo(max - min);
             return `Time (${info.unit})`;
           },
@@ -309,6 +330,10 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
           values: (u, ticks) => {
             const min = u.scales.x.min;
             const max = u.scales.x.max;
+            if (isAc) {
+              const info = getFreqUnitInfo(min, max);
+              return ticks.map(t => (t * info.factor).toFixed(1).replace(/\.0$/, ""));
+            }
             const info = getTimeUnitInfo(max - min);
             return ticks.map(t => (t * info.factor).toFixed(2).replace(/\.?0+$/, ""));
           },
@@ -326,7 +351,7 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
       ],
       series: [
         {
-          label: "Time",
+          label: isAc ? "Freq" : "Time",
         },
         ...ySeries
       ],
@@ -355,9 +380,16 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
               (u) => {
                 const idx = u.cursor.idx;
                 if (idx == null) return;
-                const t = u.data[0]?.[idx];
+                const xVal = u.data[0]?.[idx];
                 const parts = [];
-                parts.push(`t=${formatTime(t)}`);
+                
+                if (isAc) {
+                   const info = getFreqUnitInfo(xVal, xVal);
+                   parts.push(`f=${(xVal * info.factor).toFixed(2)}${info.unit}`);
+                } else {
+                   parts.push(`t=${formatTime(xVal)}`);
+                }
+
                 for (let i = 0; i < selected.length; i++) {
                   const name = selected[i].name;
                   const v = u.data[i + 1]?.[idx];
@@ -377,7 +409,7 @@ export default function TransientPlot({ x = [], series = [], selectedNames = [],
         },
       ],
     };
-  }, [selected, size.h, size.w, autoScaleCurrents, displayUnit, yAxisLabel]);
+  }, [selected, size.h, size.w, autoScaleCurrents, displayUnit, yAxisLabel, mode]);
 
   useEffect(() => {
     if (!containerRef.current) return;
