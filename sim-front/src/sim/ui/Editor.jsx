@@ -186,6 +186,9 @@ export default function Editor() {
     const [animationEnabled, setAnimationEnabled] = useState(true);
     const [animationSpeed, setAnimationSpeed] = useState(1.0);
 
+    // Canvas value display
+    const [showValuesOnCanvas, setShowValuesOnCanvas] = useState(true);
+
     // Playback loop - use ref to avoid dependency issues
     const playbackStateRef = React.useRef(playbackState);
     const playbackTimeRef = React.useRef(playbackTime);
@@ -2049,6 +2052,21 @@ export default function Editor() {
                                     </div>
                                 </>
                             )}
+
+                            {/* Show Values on Canvas Toggle */}
+                            <div className="flex items-center justify-between pt-3 mt-3 border-t border-neutral-700">
+                                <label className="text-[10px] text-neutral-400 font-semibold">SHOW VALUES</label>
+                                <button
+                                    onClick={() => setShowValuesOnCanvas(!showValuesOnCanvas)}
+                                    className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+                                        showValuesOnCanvas
+                                            ? "bg-blue-600/20 text-blue-400 border border-blue-600/40"
+                                            : "bg-neutral-800 text-neutral-500 border border-neutral-700"
+                                    }`}
+                                >
+                                    {showValuesOnCanvas ? "ON" : "OFF"}
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -2213,6 +2231,7 @@ export default function Editor() {
                     simulationData={simulationData}
                     animationEnabled={animationEnabled}
                     animationSpeed={animationSpeed}
+                    showValuesOnCanvas={showValuesOnCanvas}
                     onPlace={addAt}
                     onAddJunction={onAddJunction}
                     onAddJunctionAndConnect={onAddJunctionAndConnect}

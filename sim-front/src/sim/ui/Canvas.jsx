@@ -2,6 +2,7 @@
 import { KIND, LV } from "../model/types";
 import { ANALOG_DOMAIN, ANALOG_KIND } from "../analog/model/analogTypes";
 import { ParticleSystem } from "./ParticleSystem";
+import { formatVoltage, formatCurrent } from "../util/formatValue";
 
 const PIN_RADIUS = 10;
 const WIRE_HIT_PX = 8;
@@ -208,6 +209,7 @@ export default function Canvas({
   simulationData, // âœ… Receive simulation data (currents)
   animationEnabled = true,
   animationSpeed = 1.0,
+  showValuesOnCanvas = true,
 }) {
   const ref = useRef(null);
   const particleSystemRef = useRef(null);
@@ -753,7 +755,137 @@ export default function Canvas({
       particleSystemRef.current.render(ctx, wirePaths);
     }
 
+    // ---- Render voltage and current labels on canvas ----
+    if (showValuesOnCanvas && simulationData) {
+      const { nodeVoltages = {}, currents = {} } = simulationData;
 
+      // Helper function to draw a label with background
+      const drawLabel = (text, x, y, bgColor = "rgba(0, 0, 0, 0.8)", textColor = "#FFD700") => {
+        ctx.font = "bold 11px monospace";
+        const metrics = ctx.measureText(text);
+        const padding = 4;
+        const boxWidth = metrics.width + padding * 2;
+        const boxHeight = 14;
+
+        // Background box
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+
+        // Border
+        ctx.strokeStyle = textColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x - boxWidth / 2, y - boxHeight / 2, boxWidth, boxHeight);
+
+        // Text
+        ctx.fillStyle = textColor;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(text, x, y);
+      };
+
+      // 1. Draw node voltages at junction points
+      const nodePositions = new Map(); // node -> {x, y, count}
+
+      // Collect all pin positions for each node
+      for (const wire of circuit.wires || []) {
+        const fromPin = findPin(circuit, wire.fromPinId);
+        const toPin = findPin(circuit, wire.toPinId);
+
+        if (fromPin && simulationData.nodes?.pinToNode) {
+          const node = simulationData.nodes.pinToNode[wire.fromPinId];
+          if (node && node !== "0") {
+            const pos = findPinPos(circuit, wire.fromPinId);
+            if (pos) {
+              if (!nodePositions.has(node)) {
+                nodePositions.set(node, { x: pos.x, y: pos.y, count: 1 });
+              } else {
+                const existing = nodePositions.get(node);
+                existing.x = (existing.x * existing.count + pos.x) / (existing.count + 1);
+                existing.y = (existing.y * existing.count + pos.y) / (existing.count + 1);
+                existing.count++;
+              }
+            }
+          }
+        }
+
+        if (toPin && simulationData.nodes?.pinToNode) {
+          const node = simulationData.nodes.pinToNode[wire.toPinId];
+          if (node && node !== "0") {
+            const pos = findPinPos(circuit, wire.toPinId);
+            if (pos) {
+              if (!nodePositions.has(node)) {
+                nodePositions.set(node, { x: pos.x, y: pos.y, count: 1 });
+              } else {
+                const existing = nodePositions.get(node);
+                existing.x = (existing.x * existing.count + pos.x) / (existing.count + 1);
+                existing.y = (existing.y * existing.count + pos.y) / (existing.count + 1);
+                existing.count++;
+              }
+            }
+          }
+        }
+      }
+
+      // Draw voltage labels at node positions
+      for (const [nodeName, pos] of nodePositions.entries()) {
+        const voltage = nodeVoltages[nodeName];
+        if (voltage !== undefined && voltage !== null) {
+          const label = `${nodeName}: ${formatVoltage(voltage)}`;
+          drawLabel(label, pos.x, pos.y - 25, "rgba(0, 50, 100, 0.9)", "#60A5FA");
+        }
+      }
+
+      // 2. Draw current labels on wires
+      for (const wire of circuit.wires || []) {
+        const from = findPinPos(circuit, wire.fromPinId);
+        const to = findPinPos(circuit, wire.toPinId);
+        if (!from || !to) continue;
+
+        // Find component at either end to get current
+        const fromMeta = getPinMeta(wire.fromPinId);
+        const toMeta = getPinMeta(wire.toPinId);
+
+        let current = null;
+        let compRef = null;
+
+        if (fromMeta && fromMeta.comp && currents[fromMeta.comp.id] !== undefined) {
+          current = currents[fromMeta.comp.id];
+          compRef = fromMeta.comp.ref;
+        } else if (toMeta && toMeta.comp && currents[toMeta.comp.id] !== undefined) {
+          current = currents[toMeta.comp.id];
+          compRef = toMeta.comp.ref;
+        }
+
+        if (current !== null && Math.abs(current) > 1e-9) {
+          // Calculate midpoint of wire
+          const pts = buildWirePolyline(from, to, wire.points);
+          if (pts.length >= 2) {
+            const midIndex = Math.floor(pts.length / 2);
+            const midPoint = pts[midIndex];
+
+            // Draw current label with arrow
+            const arrow = current > 0 ? "→" : "←";
+            const label = `${arrow} ${formatCurrent(Math.abs(current))}`;
+            drawLabel(label, midPoint.x, midPoint.y - 12, "rgba(50, 30, 0, 0.9)", "#FFD700");
+          }
+        }
+      }
+
+      // 3. Draw component current labels
+      for (const c of circuit.components || []) {
+        if (!c || c.domain !== ANALOG_DOMAIN) continue;
+        if (c.kind === ANALOG_KIND.GND || c.kind === ANALOG_KIND.VOLTMETER) continue;
+
+        const current = currents[c.id];
+        if (current !== undefined && current !== null && Math.abs(current) > 1e-9) {
+          const cx = c.x + c.w / 2;
+          const cy = c.y + c.h / 2;
+
+          const label = `${c.ref}: ${formatCurrent(Math.abs(current))}`;
+          drawLabel(label, cx, c.y - 20, "rgba(100, 50, 0, 0.9)", "#FFA500");
+        }
+      }
+    }
 
     // ---- preview draft ----
     if (draft) {
