@@ -176,6 +176,96 @@ export function toSpiceNetlist({
       markUsedNodes(n1, n2);
       continue;
     }
+
+    if (c.kind === ANALOG_KIND.D || c.kind === ANALOG_KIND.LED) {
+      // Diode: D<ref> <anode> <cathode> <model>
+      const pAnode = pins.find(p => p.name === "A")?.id || pins[0]?.id;
+      const pCathode = pins.find(p => p.name === "K")?.id || pins[1]?.id;
+      const nAnode = pAnode ? nodeOf(pinToNode, pAnode) : `nc_${ref}_a`;
+      const nCathode = pCathode ? nodeOf(pinToNode, pCathode) : `nc_${ref}_k`;
+
+      // Use value as model name (e.g., "D1N4148" or "D_LED")
+      const modelName = value || (c.kind === ANALOG_KIND.LED ? "D_LED" : "D1N4148");
+      lines.push(`${ref} ${nAnode} ${nCathode} ${modelName}`);
+      emittedElements.push(ref);
+      markUsedNodes(nAnode, nCathode);
+      continue;
+    }
+
+    if (c.kind === ANALOG_KIND.NPN || c.kind === ANALOG_KIND.PNP) {
+      // BJT: Q<ref> <collector> <base> <emitter> <model>
+      const pCollector = pins.find(p => p.name === "C")?.id || pins[0]?.id;
+      const pBase = pins.find(p => p.name === "B")?.id || pins[1]?.id;
+      const pEmitter = pins.find(p => p.name === "E")?.id || pins[2]?.id;
+
+      const nC = pCollector ? nodeOf(pinToNode, pCollector) : `nc_${ref}_c`;
+      const nB = pBase ? nodeOf(pinToNode, pBase) : `nc_${ref}_b`;
+      const nE = pEmitter ? nodeOf(pinToNode, pEmitter) : `nc_${ref}_e`;
+
+      // Use value as model name (e.g., "2N2222" or "2N2907")
+      const modelName = value || (c.kind === ANALOG_KIND.NPN ? "2N2222" : "2N2907");
+      lines.push(`${ref} ${nC} ${nB} ${nE} ${modelName}`);
+      emittedElements.push(ref);
+      markUsedNodes(nC, nB, nE);
+      continue;
+    }
+
+    if (c.kind === ANALOG_KIND.OPAMP) {
+      // OpAmp subcircuit: X<ref> <in+> <in-> <out> <V+> <V-> <subckt-name>
+      const pPlus = pins.find(p => p.name === "+")?.id || pins[0]?.id;
+      const pMinus = pins.find(p => p.name === "-")?.id || pins[1]?.id;
+      const pOut = pins.find(p => p.name === "OUT")?.id || pins[2]?.id;
+      const pVPlus = pins.find(p => p.name === "V+")?.id || pins[3]?.id;
+      const pVMinus = pins.find(p => p.name === "V-")?.id || pins[4]?.id;
+
+      const nPlus = pPlus ? nodeOf(pinToNode, pPlus) : `nc_${ref}_p`;
+      const nMinus = pMinus ? nodeOf(pinToNode, pMinus) : `nc_${ref}_m`;
+      const nOut = pOut ? nodeOf(pinToNode, pOut) : `nc_${ref}_out`;
+      const nVPlus = pVPlus ? nodeOf(pinToNode, pVPlus) : `nc_${ref}_vp`;
+      const nVMinus = pVMinus ? nodeOf(pinToNode, pVMinus) : `nc_${ref}_vm`;
+
+      // Use value as subcircuit name (e.g., "LM741")
+      const subcktName = value || "LM741";
+      lines.push(`${ref} ${nPlus} ${nMinus} ${nOut} ${nVPlus} ${nVMinus} ${subcktName}`);
+      emittedElements.push(ref);
+      markUsedNodes(nPlus, nMinus, nOut, nVPlus, nVMinus);
+      continue;
+    }
+
+    if (c.kind === ANALOG_KIND.TRAFO) {
+      // Transformer: L1, L2, and K (coupling)
+      // Format: L<ref>_p <node1> <node2> <inductance>
+      //         L<ref>_s <node3> <node4> <inductance>
+      //         K<ref> L<ref>_p L<ref>_s <coupling>
+      const pP1 = pins.find(p => p.name === "P1")?.id || pins[0]?.id;
+      const pP2 = pins.find(p => p.name === "P2")?.id || pins[1]?.id;
+      const pS1 = pins.find(p => p.name === "S1")?.id || pins[2]?.id;
+      const pS2 = pins.find(p => p.name === "S2")?.id || pins[3]?.id;
+
+      const nP1 = pP1 ? nodeOf(pinToNode, pP1) : `nc_${ref}_p1`;
+      const nP2 = pP2 ? nodeOf(pinToNode, pP2) : `nc_${ref}_p2`;
+      const nS1 = pS1 ? nodeOf(pinToNode, pS1) : `nc_${ref}_s1`;
+      const nS2 = pS2 ? nodeOf(pinToNode, pS2) : `nc_${ref}_s2`;
+
+      // Parse value: "L1 L2 coupling" (e.g., "1m 1m 0.99")
+      const parts = (value || "1m 1m 0.99").split(/\s+/);
+      const L1 = parts[0] || "1m";
+      const L2 = parts[1] || "1m";
+      const coupling = parts[2] || "0.99";
+
+      const refBase = ref.replace(/^T/, "L"); // T1 -> L1
+      const L1ref = `${refBase}p`;
+      const L2ref = `${refBase}s`;
+      const Kref = ref.replace(/^T/, "K");
+
+      lines.push(`${L1ref} ${nP1} ${nP2} ${L1}`);
+      lines.push(`${L2ref} ${nS1} ${nS2} ${L2}`);
+      lines.push(`${Kref} ${L1ref} ${L2ref} ${coupling}`);
+
+      emittedElements.push(L1ref, L2ref, Kref);
+      markUsedNodes(nP1, nP2, nS1, nS2);
+      continue;
+    }
   }
 
   // --- Signals to Record ---
@@ -190,8 +280,16 @@ export function toSpiceNetlist({
   lines.push(".control");
 
   if (analysis.type === "op") {
-    // For OP analysis: use @device[i] syntax (works fine for DC)
-    const currentSignals = emittedElements.map(ref => `@${ref.toLowerCase()}[i]`);
+    // For OP analysis: use @device[i] syntax (only works for R, L, C, V sources)
+    // Skip semiconductor devices (D, Q, X) as they don't support this syntax
+    const currentSignals = emittedElements
+      .filter(ref => {
+        const firstChar = ref.charAt(0).toUpperCase();
+        // Only R, L, C, V support @device[i] in ngspice
+        return ['R', 'L', 'C', 'V'].includes(firstChar);
+      })
+      .map(ref => `@${ref.toLowerCase()}[i]`);
+
     const allSignals = [...voltageSignals, ...currentSignals].join(" ");
 
     lines.push("op");
@@ -202,8 +300,16 @@ export function toSpiceNetlist({
     const step = analysis.tran?.step || "1u";
     const stop = analysis.tran?.stop || "10m";
 
-    // For TRAN analysis: use @device[i] too, but ensure it's saved as a vector (see savecurrents/save below).
-    const currentSignals = emittedElements.map(ref => `@${ref.toLowerCase()}[i]`);
+    // For TRAN analysis: use @device[i] (only works for R, L, C, V)
+    // Skip semiconductor devices (D, Q, X) as they don't support this syntax
+    const currentSignals = emittedElements
+      .filter(ref => {
+        const firstChar = ref.charAt(0).toUpperCase();
+        // Only R, L, C, V support @device[i] in ngspice
+        return ['R', 'L', 'C', 'V'].includes(firstChar);
+      })
+      .map(ref => `@${ref.toLowerCase()}[i]`);
+
     const allSignals = [...voltageSignals, ...currentSignals].join(" ");
 
     // Use "uic" to skip DC op point for transient
@@ -256,6 +362,65 @@ export function toSpiceNetlist({
 
   lines.push("quit");
   lines.push(".endc");
+
+  // Add SPICE models for components (before .end)
+  const modelsNeeded = new Set();
+
+  for (const c of analogComponents) {
+    if (!c || c.domain !== "analog") continue;
+
+    if (c.kind === ANALOG_KIND.D) {
+      const modelName = c.props?.value || "D1N4148";
+      modelsNeeded.add(`D_${modelName}`);
+    }
+    if (c.kind === ANALOG_KIND.LED) {
+      modelsNeeded.add("LED");
+    }
+    if (c.kind === ANALOG_KIND.NPN) {
+      const modelName = c.props?.value || "2N2222";
+      modelsNeeded.add(`NPN_${modelName}`);
+    }
+    if (c.kind === ANALOG_KIND.PNP) {
+      const modelName = c.props?.value || "2N2907";
+      modelsNeeded.add(`PNP_${modelName}`);
+    }
+    if (c.kind === ANALOG_KIND.OPAMP) {
+      const subckt = c.props?.value || "LM741";
+      modelsNeeded.add(`OPAMP_${subckt}`);
+    }
+  }
+
+  // Emit model definitions
+  if (modelsNeeded.has("D_D1N4148")) {
+    lines.push("* Diode model: 1N4148");
+    lines.push(".model D1N4148 D (IS=5.84n N=1.94 RS=0.7 BV=100 IBV=100u)");
+  }
+
+  if (modelsNeeded.has("LED")) {
+    lines.push("* LED model");
+    lines.push(".model D_LED D (IS=1e-15 N=1.8 RS=1 BV=5 IBV=10u)");
+  }
+
+  if (modelsNeeded.has("NPN_2N2222")) {
+    lines.push("* NPN BJT model: 2N2222");
+    lines.push(".model 2N2222 NPN (IS=14.34f XTI=3 EG=1.11 VAF=74.03 BF=255.9 NE=1.307 ISE=14.34f IKF=.2847 XTB=1.5 BR=6.092 NC=2 ISC=0 IKR=0 RC=1 CJC=7.306p MJC=.3416 VJC=.75 FC=.5 CJE=22.01p MJE=.377 VJE=.75 TR=46.91n TF=411.1p ITF=.6 VTF=1.7 XTF=3 RB=10)");
+  }
+
+  if (modelsNeeded.has("PNP_2N2907")) {
+    lines.push("* PNP BJT model: 2N2907");
+    lines.push(".model 2N2907 PNP (IS=1.0f BF=200 NF=1.2 VAF=50 IKF=0.3 ISE=1.0f NE=1.5 BR=3 NR=1.0 VAR=6.4 IKR=0.4 ISC=1.0f NC=1.5 RB=10 RC=0.4 RE=0.2 CJE=20p CJC=10p TF=0.6n TR=50n)");
+  }
+
+  if (modelsNeeded.has("OPAMP_LM741")) {
+    lines.push("* OpAmp subcircuit: LM741");
+    lines.push(".subckt LM741 inp inn out vp vm");
+    lines.push("* Simple opamp model with gain and output limits");
+    lines.push("Rin inp inn 1Meg");
+    lines.push("Egain 1 0 inp inn 100k");
+    lines.push("Rout 1 out 75");
+    lines.push("Cout out 0 10p");
+    lines.push(".ends");
+  }
 
   lines.push(".end");
   return lines.join("\n");

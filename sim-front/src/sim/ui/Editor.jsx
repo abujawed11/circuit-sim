@@ -529,11 +529,27 @@ export default function Editor() {
                 ],
             },
             {
-                title: "Analog",
+                title: "Analog - Passive",
                 items: [
                     { kind: ANALOG_KIND.R, label: ANALOG_PART_DEFS[ANALOG_KIND.R].label, short: "R", hint: ANALOG_PART_DEFS[ANALOG_KIND.R].defaultValue },
                     { kind: ANALOG_KIND.C, label: ANALOG_PART_DEFS[ANALOG_KIND.C].label, short: "C", hint: ANALOG_PART_DEFS[ANALOG_KIND.C].defaultValue },
                     { kind: ANALOG_KIND.L, label: ANALOG_PART_DEFS[ANALOG_KIND.L].label, short: "L", hint: ANALOG_PART_DEFS[ANALOG_KIND.L].defaultValue },
+                    { kind: ANALOG_KIND.TRAFO, label: ANALOG_PART_DEFS[ANALOG_KIND.TRAFO].label, short: "T", hint: "Transformer" },
+                ],
+            },
+            {
+                title: "Analog - Semiconductors",
+                items: [
+                    { kind: ANALOG_KIND.D, label: ANALOG_PART_DEFS[ANALOG_KIND.D].label, short: "D", hint: ANALOG_PART_DEFS[ANALOG_KIND.D].defaultValue },
+                    { kind: ANALOG_KIND.LED, label: ANALOG_PART_DEFS[ANALOG_KIND.LED].label, short: "LED", hint: "Light Emitting Diode" },
+                    { kind: ANALOG_KIND.NPN, label: ANALOG_PART_DEFS[ANALOG_KIND.NPN].label, short: "Q", hint: ANALOG_PART_DEFS[ANALOG_KIND.NPN].defaultValue },
+                    { kind: ANALOG_KIND.PNP, label: ANALOG_PART_DEFS[ANALOG_KIND.PNP].label, short: "Q", hint: ANALOG_PART_DEFS[ANALOG_KIND.PNP].defaultValue },
+                    { kind: ANALOG_KIND.OPAMP, label: ANALOG_PART_DEFS[ANALOG_KIND.OPAMP].label, short: "U", hint: ANALOG_PART_DEFS[ANALOG_KIND.OPAMP].defaultValue },
+                ],
+            },
+            {
+                title: "Analog - Sources & Meters",
+                items: [
                     { kind: ANALOG_KIND.VDC, label: "VDC", short: "V", hint: ANALOG_PART_DEFS[ANALOG_KIND.VDC].defaultValue },
                     { kind: ANALOG_KIND.VAC, label: "VAC", short: "AC", hint: ANALOG_PART_DEFS[ANALOG_KIND.VAC].defaultValue },
                     { kind: ANALOG_KIND.VOLTMETER, label: ANALOG_PART_DEFS[ANALOG_KIND.VOLTMETER].label, short: "VM", hint: "Measure V across nodes" },

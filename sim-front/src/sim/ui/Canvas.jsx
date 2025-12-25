@@ -979,31 +979,293 @@ export default function Canvas({
 
         } else if (c.kind === ANALOG_KIND.GND) {
              // GND symbol
-             const topY = c.y; // Pin is at 0,0 relative?
-             // analogParts defines GND pin at {x:0, y:0}.
-             // c.x, c.y is top-left of box?
-             // Actually, makeAnalogComponent sets x,y as passed.
-             // But size is 40x40.
-             // Pin offset is 0,0. This implies the pin is at the CENTER of the component box?
-             // Let's check analogParts.js... makePin(..., {x:0, y:0}).
-             // Yes, pin is at center.
-             
-             // Draw GND from center downwards
              ctx.beginPath();
              ctx.moveTo(cx, cy);
              ctx.lineTo(cx, cy + 10);
-             
+
              // Horizontal lines
              ctx.moveTo(cx - 10, cy + 10);
              ctx.lineTo(cx + 10, cy + 10);
-             
+
              ctx.moveTo(cx - 6, cy + 15);
              ctx.lineTo(cx + 6, cy + 15);
-             
+
              ctx.moveTo(cx - 2, cy + 20);
              ctx.lineTo(cx + 2, cy + 20);
              ctx.stroke();
-             
+
+        } else if (c.kind === ANALOG_KIND.D || c.kind === ANALOG_KIND.LED) {
+            // Diode / LED: Triangle with bar
+            const triW = 12;
+            const triH = 12;
+
+            ctx.beginPath();
+            // Lead from left
+            ctx.moveTo(c.x, cy);
+            ctx.lineTo(cx - triW, cy);
+
+            // Triangle (pointing right)
+            ctx.moveTo(cx - triW, cy - triH/2);
+            ctx.lineTo(cx - triW, cy + triH/2);
+            ctx.lineTo(cx, cy);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Cathode bar
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - triH/2);
+            ctx.lineTo(cx, cy + triH/2);
+
+            // Lead to right
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(c.x + c.w, cy);
+            ctx.stroke();
+
+            // LED arrows (light emission)
+            if (c.kind === ANALOG_KIND.LED) {
+                ctx.strokeStyle = isSel ? "#FAD90E" : "#FFD700";
+                ctx.lineWidth = 1.5;
+                const arrowX = cx + 8;
+                const arrowY1 = cy - 10;
+                const arrowY2 = cy - 5;
+
+                // Arrow 1
+                ctx.beginPath();
+                ctx.moveTo(arrowX - 4, arrowY1);
+                ctx.lineTo(arrowX + 2, arrowY1 - 6);
+                ctx.moveTo(arrowX + 2, arrowY1 - 6);
+                ctx.lineTo(arrowX, arrowY1 - 4);
+                ctx.moveTo(arrowX + 2, arrowY1 - 6);
+                ctx.lineTo(arrowX + 4, arrowY1 - 6);
+
+                // Arrow 2
+                ctx.moveTo(arrowX - 4, arrowY2);
+                ctx.lineTo(arrowX + 2, arrowY2 - 6);
+                ctx.moveTo(arrowX + 2, arrowY2 - 6);
+                ctx.lineTo(arrowX, arrowY2 - 4);
+                ctx.moveTo(arrowX + 2, arrowY2 - 6);
+                ctx.lineTo(arrowX + 4, arrowY2 - 6);
+                ctx.stroke();
+
+                ctx.strokeStyle = isSel ? "#FAD90E" : "#e5e7eb";
+                ctx.lineWidth = isSel ? 3 : 2;
+            }
+
+            // Label
+            ctx.fillStyle = "#aaa";
+            ctx.font = "12px monospace";
+            ctx.textAlign = "center";
+            drawStraightText(ctx, analogLabel(c), cx, c.y - 8, c);
+
+        } else if (c.kind === ANALOG_KIND.NPN || c.kind === ANALOG_KIND.PNP) {
+            // BJT Transistor
+            const baseX = c.x + 15;
+            const collectorY = c.y + 10;
+            const emitterY = c.y + c.h - 10;
+
+            // Base line (vertical)
+            ctx.beginPath();
+            ctx.moveTo(baseX, c.y + 10);
+            ctx.lineTo(baseX, c.y + c.h - 10);
+            ctx.stroke();
+
+            // Base lead
+            ctx.beginPath();
+            ctx.moveTo(c.x, cy);
+            ctx.lineTo(baseX, cy);
+            ctx.stroke();
+
+            // Collector
+            ctx.beginPath();
+            ctx.moveTo(baseX, c.y + 20);
+            ctx.lineTo(c.x + c.w - 10, collectorY);
+            ctx.lineTo(c.x + c.w, collectorY);
+            ctx.stroke();
+
+            // Emitter
+            ctx.beginPath();
+            ctx.moveTo(baseX, c.y + c.h - 20);
+            ctx.lineTo(c.x + c.w - 10, emitterY);
+            ctx.lineTo(c.x + c.w, emitterY);
+            ctx.stroke();
+
+            // Arrow on emitter
+            const arrowSize = 4;
+            if (c.kind === ANALOG_KIND.NPN) {
+                // Arrow pointing out (NPN)
+                ctx.beginPath();
+                ctx.moveTo(c.x + c.w - 10, emitterY);
+                ctx.lineTo(c.x + c.w - 10 - arrowSize, emitterY - arrowSize);
+                ctx.moveTo(c.x + c.w - 10, emitterY);
+                ctx.lineTo(c.x + c.w - 10 - arrowSize, emitterY + arrowSize);
+                ctx.stroke();
+            } else {
+                // Arrow pointing in (PNP)
+                ctx.beginPath();
+                ctx.moveTo(baseX, c.y + c.h - 20);
+                ctx.lineTo(baseX - arrowSize, c.y + c.h - 20 - arrowSize);
+                ctx.moveTo(baseX, c.y + c.h - 20);
+                ctx.lineTo(baseX - arrowSize, c.y + c.h - 20 + arrowSize);
+                ctx.stroke();
+            }
+
+            // Label
+            ctx.fillStyle = "#aaa";
+            ctx.font = "10px monospace";
+            ctx.textAlign = "center";
+            const typeLabel = c.kind === ANALOG_KIND.NPN ? "NPN" : "PNP";
+            drawStraightText(ctx, `${analogLabel(c)} ${typeLabel}`, cx, c.y - 8, c);
+
+        } else if (c.kind === ANALOG_KIND.OPAMP) {
+            // Op-Amp: Triangle
+            const triW = c.w * 0.7;
+            const triH = c.h * 0.6;
+
+            ctx.beginPath();
+            // Triangle
+            ctx.moveTo(c.x + 10, c.y + 10);
+            ctx.lineTo(c.x + 10, c.y + c.h - 10);
+            ctx.lineTo(c.x + c.w - 15, cy);
+            ctx.closePath();
+            ctx.stroke();
+
+            // Leads
+            // V+ (top)
+            ctx.beginPath();
+            ctx.moveTo(c.x + 20, c.y);
+            ctx.lineTo(c.x + 20, c.y + 10);
+            ctx.stroke();
+
+            // V- (bottom)
+            ctx.beginPath();
+            ctx.moveTo(c.x + 20, c.y + c.h);
+            ctx.lineTo(c.x + 20, c.y + c.h - 10);
+            ctx.stroke();
+
+            // + input (top left)
+            ctx.beginPath();
+            ctx.moveTo(c.x, c.y + 20);
+            ctx.lineTo(c.x + 10, c.y + 20);
+            ctx.stroke();
+
+            // - input (bottom left)
+            ctx.beginPath();
+            ctx.moveTo(c.x, c.y + c.h - 20);
+            ctx.lineTo(c.x + 10, c.y + c.h - 20);
+            ctx.stroke();
+
+            // Output (right)
+            ctx.beginPath();
+            ctx.moveTo(c.x + c.w - 15, cy);
+            ctx.lineTo(c.x + c.w, cy);
+            ctx.stroke();
+
+            // +/- symbols
+            ctx.fillStyle = isSel ? "#FAD90E" : "#e5e7eb";
+            ctx.font = "bold 12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("+", c.x + 16, c.y + 20);
+            ctx.fillText("−", c.x + 16, c.y + c.h - 20);
+
+            // Label
+            ctx.fillStyle = "#aaa";
+            ctx.font = "10px monospace";
+            ctx.textAlign = "center";
+            drawStraightText(ctx, analogLabel(c), cx, c.y - 8, c);
+
+        } else if (c.kind === ANALOG_KIND.TRAFO) {
+            // Transformer: Two coils
+            const coilW = 12;
+            const gap = 6;
+
+            // Primary (left)
+            ctx.beginPath();
+            ctx.moveTo(c.x, c.y + 10);
+            ctx.lineTo(cx - gap - coilW, c.y + 10);
+
+            for (let i = 0; i < 3; i++) {
+                const y = c.y + 15 + i * 10;
+                ctx.arc(cx - gap - coilW/2, y, coilW/2, Math.PI, 0, false);
+            }
+
+            ctx.lineTo(c.x, c.y + c.h - 10);
+            ctx.stroke();
+
+            // Secondary (right)
+            ctx.beginPath();
+            ctx.moveTo(c.x + c.w, c.y + 10);
+            ctx.lineTo(cx + gap + coilW, c.y + 10);
+
+            for (let i = 0; i < 3; i++) {
+                const y = c.y + 15 + i * 10;
+                ctx.arc(cx + gap + coilW/2, y, coilW/2, Math.PI, 0, true);
+            }
+
+            ctx.lineTo(c.x + c.w, c.y + c.h - 10);
+            ctx.stroke();
+
+            // Core (center lines)
+            ctx.beginPath();
+            ctx.moveTo(cx, c.y + 10);
+            ctx.lineTo(cx, c.y + c.h - 10);
+            ctx.moveTo(cx + 2, c.y + 10);
+            ctx.lineTo(cx + 2, c.y + c.h - 10);
+            ctx.stroke();
+
+            // Label
+            ctx.fillStyle = "#aaa";
+            ctx.font = "10px monospace";
+            ctx.textAlign = "center";
+            drawStraightText(ctx, analogLabel(c), cx, c.y - 8, c);
+
+        } else if (c.kind === ANALOG_KIND.VOLTMETER) {
+            // Voltmeter: Circle with V
+            const r = 20;
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Leads
+            ctx.beginPath();
+            ctx.moveTo(cx, c.y);
+            ctx.lineTo(cx, cy - r);
+            ctx.moveTo(cx, cy + r);
+            ctx.lineTo(cx, c.y + c.h);
+            ctx.stroke();
+
+            // V symbol
+            ctx.fillStyle = isSel ? "#FAD90E" : "#e5e7eb";
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("V", cx, cy);
+
+        } else if (c.kind === ANALOG_KIND.AMMETER) {
+            // Ammeter: Circle with A
+            const r = 20;
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Leads (horizontal)
+            ctx.beginPath();
+            ctx.moveTo(c.x, cy);
+            ctx.lineTo(cx - r, cy);
+            ctx.moveTo(cx + r, cy);
+            ctx.lineTo(c.x + c.w, cy);
+            ctx.stroke();
+
+            // A symbol
+            ctx.fillStyle = isSel ? "#FAD90E" : "#e5e7eb";
+            ctx.font = "bold 16px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText("A", cx, cy);
+
         } else {
              // Fallback box
             ctx.fillStyle = "#0f172a";

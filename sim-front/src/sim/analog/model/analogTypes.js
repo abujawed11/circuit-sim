@@ -7,6 +7,12 @@ export const ANALOG_KIND = Object.freeze({
   R: "A_R",
   C: "A_C",
   L: "A_L",
+  D: "A_DIODE",
+  LED: "A_LED",
+  NPN: "A_NPN",
+  PNP: "A_PNP",
+  OPAMP: "A_OPAMP",
+  TRAFO: "A_TRAFO",
   VDC: "A_VDC",
   VAC: "A_VAC",
   VOLTMETER: "A_VM",
@@ -37,6 +43,48 @@ export const ANALOG_PART_DEFS = Object.freeze({
     defaultValue: "1m",
     size: { w: 90, h: 36 },
     pins: ["1", "2"],
+  },
+  [ANALOG_KIND.D]: {
+    label: "Diode",
+    refPrefix: "D",
+    defaultValue: "D1N4148", // Standard model
+    size: { w: 90, h: 36 },
+    pins: ["A", "K"], // Anode, Cathode
+  },
+  [ANALOG_KIND.LED]: {
+    label: "LED",
+    refPrefix: "D",
+    defaultValue: "D_LED", // We'll need to define a model for this
+    size: { w: 90, h: 36 },
+    pins: ["A", "K"],
+  },
+  [ANALOG_KIND.NPN]: {
+    label: "NPN BJT",
+    refPrefix: "Q",
+    defaultValue: "2N2222",
+    size: { w: 60, h: 60 },
+    pins: ["C", "B", "E"],
+  },
+  [ANALOG_KIND.PNP]: {
+    label: "PNP BJT",
+    refPrefix: "Q",
+    defaultValue: "2N2907",
+    size: { w: 60, h: 60 },
+    pins: ["C", "B", "E"],
+  },
+  [ANALOG_KIND.OPAMP]: {
+    label: "OpAmp",
+    refPrefix: "X",
+    defaultValue: "LM741", // Subcircuit
+    size: { w: 100, h: 80 },
+    pins: ["+", "-", "OUT", "V+", "V-"],
+  },
+  [ANALOG_KIND.TRAFO]: {
+    label: "Transformer",
+    refPrefix: "T", // Pseudo-ref, will emit L1, L2, K
+    defaultValue: "1m 1m 0.99", // L1 L2 Coupling
+    size: { w: 80, h: 60 },
+    pins: ["P1", "P2", "S1", "S2"], // Primary, Secondary
   },
   [ANALOG_KIND.VDC]: {
     label: "DC Voltage",
